@@ -1,0 +1,4 @@
+.DS_Store
+bin/
+web/node_modules/
+web/coverage/
