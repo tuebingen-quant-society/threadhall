@@ -21,7 +21,7 @@
 
 ### Task 1: Bootstrap the repository and contracts
 
-**Files:** Create `go.mod`, `Makefile`, `.gitignore`, `LICENSE`, `README.md`, `cmd/threadhall/main.go`, `internal/app/app.go`, `internal/httpapi/problem.go`, `web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/src/main.tsx`, `web/src/app.tsx`, `internal/webassets/assets.go`, `.github/workflows/ci.yml`.
+**Files:** Create `go.mod`, `Makefile`, `.gitignore`, `cmd/threadhall/main.go`, `internal/app/app.go`, `internal/httpapi/problem.go`, `web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/src/main.tsx`, `web/src/app.tsx`, `internal/webassets/assets.go`, `.github/workflows/ci.yml`; update `README.md` and verify `LICENSE`.
 
 - [ ] Write `internal/httpapi/problem_test.go` for JSON content type, status, stable `code`, and absence of an internal cause. Run `go test ./internal/httpapi`; expect failure because `Problem` does not exist.
 - [ ] Implement the minimal public contract:
