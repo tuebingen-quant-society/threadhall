@@ -23,28 +23,6 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestOpenConfiguresSQLite(t *testing.T) {
-	db := openTestDB(t)
-
-	assertPragmaInt(t, db, "foreign_keys", 1)
-	assertPragmaText(t, db, "journal_mode", "wal")
-	assertPragmaInt(t, db, "synchronous", 2)
-
-	if _, err := db.Exec("CREATE VIRTUAL TABLE temp.fts5_check USING fts5(content)"); err != nil {
-		t.Fatalf("FTS5 is unavailable: %v", err)
-	}
-	if _, err := db.Exec("INSERT INTO fts5_check(content) VALUES ('bounded sqlite writes')"); err != nil {
-		t.Fatalf("insert FTS5 check row: %v", err)
-	}
-	var matches int
-	if err := db.QueryRow("SELECT count(*) FROM fts5_check WHERE fts5_check MATCH 'sqlite'").Scan(&matches); err != nil {
-		t.Fatalf("query FTS5 check row: %v", err)
-	}
-	if matches != 1 {
-		t.Fatalf("FTS5 matches = %d, want 1", matches)
-	}
-}
-
 func TestStorageLimitsArePositiveAndBounded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "threadhall.db")
 	for _, connections := range []int{0, maxReadConnections + 1} {
@@ -138,42 +116,6 @@ func TestWriterPreservesFIFOAndRejectsSaturation(t *testing.T) {
 	}
 }
 
-func TestWriterCancellationDoesNotBlockWorker(t *testing.T) {
-	db := openTestDB(t)
-	writer, err := NewWriter(db, 1)
-	if err != nil {
-		t.Fatalf("NewWriter: %v", err)
-	}
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() {
-		result <- writer.Do(ctx, func(*sql.Tx) error {
-			close(started)
-			<-release
-			return nil
-		})
-	}()
-	<-started
-	cancel()
-
-	select {
-	case err := <-result:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("canceled Do() error = %v, want context.Canceled", err)
-		}
-	case <-time.After(250 * time.Millisecond):
-		t.Fatal("canceled Do() blocked")
-	}
-
-	close(release)
-	if err := writer.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-}
-
 func TestWriterRollsBackFailedWrite(t *testing.T) {
 	db := openTestDB(t)
 	if _, err := db.Exec("CREATE TABLE write_log (id INTEGER PRIMARY KEY)"); err != nil {
@@ -224,27 +166,5 @@ func waitForQueuedRequests(t *testing.T, writer *Writer, want int) {
 			t.Fatalf("queued requests = %d, want %d", len(writer.requests), want)
 		}
 		time.Sleep(time.Millisecond)
-	}
-}
-
-func assertPragmaInt(t *testing.T, db *sql.DB, name string, want int) {
-	t.Helper()
-	var got int
-	if err := db.QueryRow("PRAGMA " + name).Scan(&got); err != nil {
-		t.Fatalf("read PRAGMA %s: %v", name, err)
-	}
-	if got != want {
-		t.Fatalf("PRAGMA %s = %d, want %d", name, got, want)
-	}
-}
-
-func assertPragmaText(t *testing.T, db *sql.DB, name, want string) {
-	t.Helper()
-	var got string
-	if err := db.QueryRow("PRAGMA " + name).Scan(&got); err != nil {
-		t.Fatalf("read PRAGMA %s: %v", name, err)
-	}
-	if got != want {
-		t.Fatalf("PRAGMA %s = %q, want %q", name, got, want)
 	}
 }

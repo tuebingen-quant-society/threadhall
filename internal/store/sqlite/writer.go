@@ -29,7 +29,6 @@ type request struct {
 type Writer struct {
 	db       *sql.DB
 	requests chan request
-	stop     chan struct{}
 	done     chan struct{}
 	mu       sync.Mutex
 	closed   bool
@@ -46,7 +45,6 @@ func NewWriter(db *sql.DB, queueSize int) (*Writer, error) {
 	writer := &Writer{
 		db:       db,
 		requests: make(chan request, queueSize),
-		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
 	}
 	go writer.run()
@@ -87,12 +85,12 @@ func (w *Writer) Do(ctx context.Context, fn WriteFunc) error {
 	}
 }
 
-// Close stops admissions, resolves queued requests, and waits for the worker.
+// Close stops admissions, drains admitted requests FIFO, and waits for them.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	if !w.closed {
 		w.closed = true
-		close(w.stop)
+		close(w.requests)
 	}
 	w.mu.Unlock()
 	<-w.done
@@ -101,25 +99,8 @@ func (w *Writer) Close() error {
 
 func (w *Writer) run() {
 	defer close(w.done)
-	for {
-		select {
-		case <-w.stop:
-			w.rejectPending()
-			return
-		case req := <-w.requests:
-			req.result <- w.execute(req)
-		}
-	}
-}
-
-func (w *Writer) rejectPending() {
-	for {
-		select {
-		case req := <-w.requests:
-			req.result <- errClosed
-		default:
-			return
-		}
+	for req := range w.requests {
+		req.result <- w.execute(req)
 	}
 }
 
@@ -127,12 +108,30 @@ func (w *Writer) execute(req request) error {
 	if err := req.ctx.Err(); err != nil {
 		return err
 	}
-	tx, err := w.db.BeginTx(req.ctx, nil)
+	conn, err := w.db.Conn(req.ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := req.ctx.Err(); err != nil {
+		return err
+	}
+
+	// The request context controls connection acquisition and admission. The
+	// transaction itself is rolled back synchronously below so the next FIFO
+	// write cannot race database/sql's asynchronous cancellation rollback.
+	tx, err := conn.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	if err := req.write(tx); err != nil {
+		return err
+	}
+	if err := req.ctx.Err(); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return errors.Join(err, rollbackErr)
+		}
 		return err
 	}
 	return tx.Commit()

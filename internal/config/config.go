@@ -53,7 +53,8 @@ func (c Config) Validate() error {
 }
 
 // GenerateSecretFile creates a new random secret readable only by its owner.
-// It refuses to replace an existing file.
+// It refuses to replace an existing file. A failed write, sync, or close may
+// leave that owner-only file in place; it is never removed by pathname.
 func GenerateSecretFile(path string) (err error) {
 	secret := make([]byte, secretBytes)
 	if _, err := rand.Read(secret); err != nil {
@@ -64,13 +65,9 @@ func GenerateSecretFile(path string) (err error) {
 	if err != nil {
 		return fmt.Errorf("create secret file: %w", err)
 	}
-	complete := false
 	defer func() {
 		if closeErr := file.Close(); err == nil && closeErr != nil {
 			err = fmt.Errorf("close secret file: %w", closeErr)
-		}
-		if !complete || err != nil {
-			_ = os.Remove(path)
 		}
 	}()
 
@@ -80,6 +77,5 @@ func GenerateSecretFile(path string) (err error) {
 	if err = file.Sync(); err != nil {
 		return fmt.Errorf("sync secret file: %w", err)
 	}
-	complete = true
 	return nil
 }

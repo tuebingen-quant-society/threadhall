@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -76,5 +77,43 @@ func TestGenerateSecretFileIsOwnerOnly(t *testing.T) {
 	}
 	if got := len(secret); got != secretBytes {
 		t.Fatalf("secret length = %d, want %d", got, secretBytes)
+	}
+	if err := GenerateSecretFile(path); err == nil {
+		t.Fatal("second GenerateSecretFile() error = nil, want exclusive-create error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read secret after exclusive-create refusal: %v", err)
+	}
+	if !bytes.Equal(after, secret) {
+		t.Fatal("exclusive-create refusal changed the generated secret")
+	}
+}
+
+func TestGenerateSecretFilePreservesExistingTarget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing.secret")
+	want := []byte("operator-owned existing secret")
+	if err := os.WriteFile(path, want, 0o640); err != nil {
+		t.Fatalf("write existing target: %v", err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatalf("chmod existing target: %v", err)
+	}
+	if err := GenerateSecretFile(path); err == nil {
+		t.Fatal("GenerateSecretFile() error = nil, want exclusive-create error")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read existing target: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("existing target = %q, want %q", got, want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat existing target: %v", err)
+	}
+	if gotMode := info.Mode().Perm(); gotMode != 0o640 {
+		t.Fatalf("existing target mode = %#o, want 0640", gotMode)
 	}
 }

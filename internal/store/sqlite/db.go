@@ -60,6 +60,7 @@ func verifyCapabilities(ctx context.Context, db *sql.DB) error {
 		name string
 		want int
 	}{
+		{name: "busy_timeout", want: 0},
 		{name: "foreign_keys", want: 1},
 		{name: "synchronous", want: 2},
 	}
