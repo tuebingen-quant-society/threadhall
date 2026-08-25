@@ -16,7 +16,7 @@ import (
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 )
 
-func TestProductionHandlerBoundsConversationTargetBeforeAuthentication(t *testing.T) {
+func TestProductionHandlerRejectsInvalidConversationTargetsBeforeSecurity(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "threadhall.db"), 1)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -33,16 +33,24 @@ func TestProductionHandlerBoundsConversationTargetBeforeAuthentication(t *testin
 	if err != nil {
 		t.Fatalf("newServerHandler: %v", err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
-	request.URL.RawQuery = "limit=" + strings.Repeat("0", 2049) + "1"
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, request)
-	var problem httpapi.Problem
-	if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
-		t.Fatalf("decode problem: %v", err)
-	}
-	if recorder.Code != http.StatusBadRequest || problem.Code != "invalid_request" {
-		t.Fatalf("response = status %d problem %#v", recorder.Code, problem)
+	for _, target := range []struct {
+		method, path, rawQuery string
+	}{
+		{http.MethodGet, "/api/v1/conversations", "limit=" + strings.Repeat("0", 2049) + "1"},
+		{http.MethodGet, "/api/v1/conversations", "before=nope"},
+		{http.MethodPost, "/api/v1/conversations", "unexpected=1"},
+	} {
+		request := httptest.NewRequest(target.method, target.path, nil)
+		request.URL.RawQuery = target.rawQuery
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		var problem httpapi.Problem
+		if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
+			t.Fatalf("decode %s %s problem: %v", target.method, target.rawQuery, err)
+		}
+		if recorder.Code != http.StatusBadRequest || problem.Code != "invalid_request" {
+			t.Fatalf("%s %s = status %d problem %#v", target.method, target.rawQuery, recorder.Code, problem)
+		}
 	}
 }
 

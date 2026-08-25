@@ -98,16 +98,30 @@ func TestConversationRoutesRejectOversizedOrMalformedTargetsBeforeAuthentication
 	assertInvalidConversationTarget(t, handler, httptest.NewRequest(http.MethodGet, oversizedEncodedPath, nil))
 }
 
-func TestConversationPagesRejectDuplicateAndInvalidScalars(t *testing.T) {
-	authAPI := &fakeAuthAPI{user: auth.User{ID: 1, Username: "admin"}}
-	handler := testConversationHandler(authAPI, &fakeConversationAPI{})
-	for _, rawQuery := range []string{
-		"limit=1&limit=2", "before_id=1&before_id=2", "before_id=0", "before_id=nope",
-		"limit=0", "limit=101", "limit=nope", "unknown=1",
+func TestConversationPagesRejectSemanticQueryErrorsBeforeAuthentication(t *testing.T) {
+	handler := testConversationHandler(&fakeAuthAPI{}, &fakeConversationAPI{})
+	for _, path := range []string{"/api/v1/conversations", "/api/v1/conversations/1/members"} {
+		for _, rawQuery := range []string{
+			"limit=1&limit=2", "before=1&before=2", "before=", "limit=", "before=0", "before=nope",
+			"limit=0", "limit=101", "limit=nope", "unknown=1", "before_id=1",
+		} {
+			request := httptest.NewRequest(http.MethodGet, path+"?"+rawQuery, nil)
+			assertInvalidConversationTarget(t, handler, request)
+		}
+	}
+}
+
+func TestConversationNoQueryRoutesRejectQueryBeforeAuthenticationOrOrigin(t *testing.T) {
+	handler := testConversationHandler(&fakeAuthAPI{}, &fakeConversationAPI{})
+	for _, target := range []struct {
+		method, path string
+	}{
+		{http.MethodPost, "/api/v1/conversations?unexpected=1"},
+		{http.MethodGet, "/api/v1/conversations/1?unexpected=1"},
+		{http.MethodPost, "/api/v1/conversations/1/members?unexpected=1"},
+		{http.MethodDelete, "/api/v1/conversations/1/members/2?unexpected=1"},
 	} {
-		request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?"+rawQuery, nil)
-		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: tokenString(0x23)})
-		assertInvalidConversationTarget(t, handler, request)
+		assertInvalidConversationTarget(t, handler, httptest.NewRequest(target.method, target.path, nil))
 	}
 }
 

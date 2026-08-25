@@ -81,8 +81,21 @@ func (s *ConversationStore) CreateDM(ctx context.Context, record conversation.DM
 			created, err = conversationByID(ctx, tx, id)
 			return err
 		}
-		if err := rejectLegacyIdempotency(ctx, tx, record.RequesterID, record.IdempotencyKey); err != nil {
-			return err
+		legacy, exact, legacyErr := legacyDMByKey(ctx, tx, record.RequesterID, record.IdempotencyKey,
+			record.UserLowID, record.UserHighID)
+		if legacyErr == nil {
+			if !exact {
+				return conversation.ErrConflict
+			}
+			if err := recordMutation(ctx, tx, record.RequesterID, record.IdempotencyKey, "create_dm",
+				fingerprint, legacy.ID, unix(legacy.CreatedAt)); err != nil {
+				return err
+			}
+			created = legacy
+			return nil
+		}
+		if !errors.Is(legacyErr, sql.ErrNoRows) {
+			return legacyErr
 		}
 		var users int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id IN (?, ?)`, record.UserLowID, record.UserHighID).Scan(&users); err != nil {
@@ -241,22 +254,6 @@ func recordMutation(ctx context.Context, tx *sql.Tx, actorID int64, key, operati
 func conversationByID(ctx context.Context, tx *sql.Tx, id int64) (conversation.Conversation, error) {
 	return scanConversation(tx.QueryRowContext(ctx, `SELECT id, kind, name, created_by, created_at
 		FROM conversations WHERE id = ?`, id))
-}
-
-func legacyConversationByKey(ctx context.Context, tx *sql.Tx, actorID int64, key string) (conversation.Conversation, error) {
-	return scanConversation(tx.QueryRowContext(ctx, `SELECT id, kind, name, created_by, created_at
-		FROM conversations WHERE created_by = ? AND idempotency_key = ?`, actorID, key))
-}
-
-func rejectLegacyIdempotency(ctx context.Context, tx *sql.Tx, actorID int64, key string) error {
-	_, err := legacyConversationByKey(ctx, tx, actorID, key)
-	if err == nil {
-		return conversation.ErrConflict
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	return err
 }
 
 func conversationByDMPair(ctx context.Context, tx *sql.Tx, low, high int64) (conversation.Conversation, error) {

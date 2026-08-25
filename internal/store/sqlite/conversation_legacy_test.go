@@ -60,6 +60,53 @@ func TestConversationStoreAdoptsOnlyExactLegacyChannelIdempotency(t *testing.T) 
 	}
 }
 
+func TestConversationStoreAdoptsOnlyExactLegacyDMIdempotency(t *testing.T) {
+	db := openUpgradedLegacyIdempotencyDB(t)
+	writer, err := NewWriter(db, 8)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	store := NewConversationStore(db, writer)
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+
+	if _, err := store.CreateDM(context.Background(), conversation.DMRecord{
+		RequesterID: 2, OtherUserID: 3, UserLowID: 2, UserHighID: 3,
+		IdempotencyKey: "dm-origin", CreatedAt: now.Add(time.Hour),
+	}); !errors.Is(err, conversation.ErrConflict) {
+		t.Fatalf("mismatched legacy DM retry error = %v, want ErrConflict", err)
+	}
+	if _, err := store.CreateChannel(context.Background(), conversation.ChannelRecord{
+		CreatorID: 2, Kind: conversation.KindChannel, Name: "Wrong operation",
+		IdempotencyKey: "dm-origin", CreatedAt: now.Add(time.Hour),
+	}); !errors.Is(err, conversation.ErrConflict) {
+		t.Fatalf("legacy DM key reused for channel error = %v, want ErrConflict", err)
+	}
+
+	replayed, err := store.CreateDM(context.Background(), conversation.DMRecord{
+		RequesterID: 2, OtherUserID: 1, UserLowID: 1, UserHighID: 2,
+		IdempotencyKey: "dm-origin", CreatedAt: now.Add(time.Hour),
+	})
+	if err != nil || replayed.ID != 10 || replayed.Kind != conversation.KindDM || !replayed.CreatedAt.Equal(now) {
+		t.Fatalf("exact legacy DM retry = (%#v, %v)", replayed, err)
+	}
+	var mutations, memberships, events int
+	if err := db.QueryRow(`SELECT count(*) FROM conversation_mutations
+		WHERE actor_id = 2 AND idempotency_key = 'dm-origin'
+		AND operation = 'create_dm' AND conversation_id = 10`).Scan(&mutations); err != nil {
+		t.Fatalf("count adopted DM mutations: %v", err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM conversation_members WHERE conversation_id = 10`).Scan(&memberships); err != nil {
+		t.Fatalf("count legacy DM memberships: %v", err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM events WHERE conversation_id = 10`).Scan(&events); err != nil {
+		t.Fatalf("count legacy DM events: %v", err)
+	}
+	if mutations != 1 || memberships != 2 || events != 0 {
+		t.Fatalf("legacy DM side effects = mutations %d memberships %d events %d", mutations, memberships, events)
+	}
+}
+
 func openUpgradedLegacyIdempotencyDB(t *testing.T) *sql.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "legacy-idempotency.db")
