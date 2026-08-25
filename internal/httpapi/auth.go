@@ -38,11 +38,11 @@ type authHandler struct {
 // RegisterAuth installs the complete human-authentication HTTP surface.
 func RegisterAuth(mux *http.ServeMux, api AuthAPI, publicOrigin string, secureCookies bool) {
 	handler := &authHandler{api: api, publicOrigin: publicOrigin, secureCookies: secureCookies}
-	mux.HandleFunc("GET /api/v1/session", handler.getSession)
-	mux.Handle("POST /api/v1/session", requireMutationSecurity(publicOrigin, http.HandlerFunc(handler.login)))
-	mux.Handle("DELETE /api/v1/session", requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.logout))))
-	mux.Handle("POST /api/v1/invites", requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.createInvite))))
-	mux.Handle("POST /api/v1/users", requireMutationSecurity(publicOrigin, http.HandlerFunc(handler.redeemInvite)))
+	mux.Handle("GET /api/v1/session", disableAuthCaching(http.HandlerFunc(handler.getSession)))
+	mux.Handle("POST /api/v1/session", disableAuthCaching(requireMutationSecurity(publicOrigin, http.HandlerFunc(handler.login))))
+	mux.Handle("DELETE /api/v1/session", disableAuthCaching(requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.logout)))))
+	mux.Handle("POST /api/v1/invites", disableAuthCaching(requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.createInvite)))))
+	mux.Handle("POST /api/v1/users", disableAuthCaching(requireMutationSecurity(publicOrigin, http.HandlerFunc(handler.redeemInvite))))
 }
 
 func (h *authHandler) getSession(w http.ResponseWriter, request *http.Request) {
@@ -67,6 +67,10 @@ func (h *authHandler) login(w http.ResponseWriter, request *http.Request) {
 		writeInvalidRequest(w)
 		return
 	}
+	csrf, ok := h.generateCSRF(w)
+	if !ok {
+		return
+	}
 	session, err := h.api.Login(request.Context(), command)
 	if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrInvalidInput) {
 		WriteProblem(w, Problem{
@@ -81,9 +85,7 @@ func (h *authHandler) login(w http.ResponseWriter, request *http.Request) {
 		writeInternalProblem(w)
 		return
 	}
-	if !h.issueSessionCookies(w, session) {
-		return
-	}
+	h.issueSessionCookies(w, session, csrf)
 	writeJSON(w, http.StatusOK, sessionResponse(session))
 }
 
@@ -129,6 +131,10 @@ func (h *authHandler) redeemInvite(w http.ResponseWriter, request *http.Request)
 		writeInvalidRequest(w)
 		return
 	}
+	csrf, ok := h.generateCSRF(w)
+	if !ok {
+		return
+	}
 	session, err := h.api.RedeemInvite(request.Context(), command)
 	if errors.Is(err, auth.ErrInvalidInput) || errors.Is(err, auth.ErrInvalidInvite) || errors.Is(err, auth.ErrUsernameUnavailable) {
 		WriteProblem(w, Problem{Status: http.StatusBadRequest, Code: "account_creation_failed", Detail: "account could not be created"})
@@ -141,23 +147,15 @@ func (h *authHandler) redeemInvite(w http.ResponseWriter, request *http.Request)
 		writeInternalProblem(w)
 		return
 	}
-	if !h.issueSessionCookies(w, session) {
-		return
-	}
+	h.issueSessionCookies(w, session, csrf)
 	writeJSON(w, http.StatusCreated, sessionResponse(session))
 }
 
-func (h *authHandler) issueSessionCookies(w http.ResponseWriter, session auth.Session) bool {
-	csrf, err := h.api.NewCSRFToken()
-	if err != nil {
-		writeInternalProblem(w)
-		return false
-	}
+func (h *authHandler) issueSessionCookies(w http.ResponseWriter, session auth.Session, csrf string) {
 	h.setCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: session.Token, HttpOnly: true, Expires: session.ExpiresAt,
 	})
 	h.setCookie(w, &http.Cookie{Name: csrfCookieName, Value: csrf})
-	return true
 }
 
 func (h *authHandler) ensureCSRF(w http.ResponseWriter, request *http.Request) bool {
@@ -166,13 +164,24 @@ func (h *authHandler) ensureCSRF(w http.ResponseWriter, request *http.Request) b
 			return true
 		}
 	}
-	token, err := h.api.NewCSRFToken()
-	if err != nil {
-		writeInternalProblem(w)
+	token, ok := h.generateCSRF(w)
+	if !ok {
 		return false
 	}
 	h.setCookie(w, &http.Cookie{Name: csrfCookieName, Value: token})
 	return true
+}
+
+func (h *authHandler) generateCSRF(w http.ResponseWriter) (string, bool) {
+	token, err := h.api.NewCSRFToken()
+	if err == nil {
+		_, err = auth.DecodeToken(token)
+	}
+	if err != nil {
+		writeInternalProblem(w)
+		return "", false
+	}
+	return token, true
 }
 
 func (h *authHandler) setCookie(w http.ResponseWriter, cookie *http.Cookie) {

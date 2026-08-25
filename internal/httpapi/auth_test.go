@@ -26,6 +26,9 @@ func TestSessionGetSeedsStrictCSRFWithoutMutatingSession(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", recorder.Code)
 	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
 	csrf := responseCookie(t, recorder, csrfCookieName)
 	if csrf.Value != api.csrf || csrf.HttpOnly || !csrf.Secure || csrf.SameSite != http.SameSiteLaxMode || csrf.Path != "/" {
 		t.Fatalf("CSRF cookie = %#v", csrf)
@@ -45,6 +48,9 @@ func TestSessionGetAuthenticatesWithoutRotatingDatabaseState(t *testing.T) {
 
 	if recorder.Code != http.StatusOK || api.authenticateCalls != 1 {
 		t.Fatalf("GET session status/calls = %d/%d", recorder.Code, api.authenticateCalls)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 	if len(recorder.Result().Cookies()) != 1 {
 		t.Fatalf("response cookies = %d, want only seeded CSRF", len(recorder.Result().Cookies()))
@@ -84,6 +90,9 @@ func TestMutationRequiresExactOriginAndDoubleSubmitCSRF(t *testing.T) {
 			if recorder.Code != test.want {
 				t.Fatalf("status = %d, want %d; body=%s", recorder.Code, test.want, recorder.Body.String())
 			}
+			if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("Cache-Control = %q, want no-store", got)
+			}
 		})
 	}
 }
@@ -95,6 +104,9 @@ func TestLoginSetsStrictSessionAndFreshCSRFCookies(t *testing.T) {
 		map[string]string{"username": "member", "password": "correct horse battery staple"}, tokenString(0x31))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 	session := responseCookie(t, recorder, sessionCookieName)
 	if session.Value != api.session.Token || !session.HttpOnly || !session.Secure || session.SameSite != http.SameSiteLaxMode || session.Path != "/" {
@@ -113,6 +125,9 @@ func TestLoginDoesNotEmitActiveSessionCookieWhenCSRFGenerationFails(t *testing.T
 		map[string]string{"username": "member", "password": "correct horse battery staple"}, tokenString(0x31))
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+	if api.loginCalls != 0 {
+		t.Fatalf("Login calls = %d, want 0 before failed CSRF generation", api.loginCalls)
 	}
 	for _, cookie := range recorder.Result().Cookies() {
 		if cookie.Name == sessionCookieName {
@@ -241,12 +256,16 @@ type fakeAuthAPI struct {
 	inviteErr         error
 	authenticateCalls int
 	revokeCalls       int
+	loginCalls        int
+	redeemCalls       int
 }
 
 func (a *fakeAuthAPI) Login(context.Context, auth.Login) (auth.Session, error) {
+	a.loginCalls++
 	return a.session, a.loginErr
 }
 func (a *fakeAuthAPI) RedeemInvite(context.Context, auth.CreateUser) (auth.Session, error) {
+	a.redeemCalls++
 	return a.session, nil
 }
 func (a *fakeAuthAPI) CreateInvite(context.Context, int64) (auth.Invite, error) {

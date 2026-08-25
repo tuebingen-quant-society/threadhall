@@ -10,6 +10,13 @@ import (
 
 type userContextKey struct{}
 
+func disableAuthCaching(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, request)
+	})
+}
+
 // RequireSession authenticates a canonical session cookie and places its user
 // in the request context without rotating or otherwise mutating the session.
 func RequireSession(api AuthAPI, next http.Handler) http.Handler {
