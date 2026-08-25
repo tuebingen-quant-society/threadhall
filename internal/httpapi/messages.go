@@ -16,11 +16,20 @@ type MessageAPI interface {
 	History(context.Context, message.History) (message.Page, error)
 }
 
-type messageHandler struct{ api MessageAPI }
+type messageHandler struct {
+	api      MessageAPI
+	notifier EventNotifier
+}
 
 // RegisterMessages installs authenticated root-text message routes.
-func RegisterMessages(mux *http.ServeMux, authAPI AuthAPI, api MessageAPI, publicOrigin string) {
-	handler := &messageHandler{api: api}
+func RegisterMessages(
+	mux *http.ServeMux,
+	authAPI AuthAPI,
+	api MessageAPI,
+	notifier EventNotifier,
+	publicOrigin string,
+) {
+	handler := &messageHandler{api: api, notifier: notifier}
 	read := func(preflight func(http.Handler) http.Handler, next http.HandlerFunc) http.Handler {
 		return disableAuthCaching(preflight(RequireSession(authAPI, next)))
 	}
@@ -48,6 +57,7 @@ func (h *messageHandler) send(w http.ResponseWriter, request *http.Request) {
 	if writeMessageProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(result.Event.Seq)
 	writeJSON(w, http.StatusCreated, result)
 }
 
@@ -65,6 +75,7 @@ func (h *messageHandler) edit(w http.ResponseWriter, request *http.Request) {
 	if writeMessageProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(result.Event.Seq)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -81,6 +92,7 @@ func (h *messageHandler) delete(w http.ResponseWriter, request *http.Request) {
 	if writeMessageProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(result.Event.Seq)
 	writeJSON(w, http.StatusOK, result)
 }
 

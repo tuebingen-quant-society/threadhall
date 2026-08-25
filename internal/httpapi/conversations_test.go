@@ -40,6 +40,21 @@ func TestConversationMutationsRequireSessionCSRFAndIdempotencyKeys(t *testing.T)
 	}
 }
 
+func TestConversationMutationsWakeOrderedEventPumpAfterCommit(t *testing.T) {
+	authAPI := &fakeAuthAPI{user: auth.User{ID: 1, Username: "admin"}}
+	api := &fakeConversationAPI{created: conversation.Conversation{ID: 9, Kind: conversation.KindPrivate}}
+	notifier := &recordingNotifier{}
+	mux := http.NewServeMux()
+	RegisterConversations(mux, authAPI, api, notifier, testOrigin)
+	csrf := tokenString(0x42)
+	recorder := conversationJSONMutation(t, mux, http.MethodPost, "/api/v1/conversations", map[string]any{
+		"kind": "private", "name": "staff", "idempotency_key": "create-staff",
+	}, csrf, true)
+	if recorder.Code != http.StatusCreated || notifier.calls != 1 {
+		t.Fatalf("response/notifier = %d / %#v", recorder.Code, notifier)
+	}
+}
+
 func TestConversationHTTPMapsStableDomainProblems(t *testing.T) {
 	authAPI := &fakeAuthAPI{user: auth.User{ID: 1, Username: "admin"}, csrf: tokenString(0x43)}
 	csrf := tokenString(0x44)
@@ -154,7 +169,7 @@ func assertInvalidConversationTarget(t *testing.T, handler http.Handler, request
 
 func testConversationHandler(authAPI AuthAPI, api ConversationAPI) http.Handler {
 	mux := http.NewServeMux()
-	RegisterConversations(mux, authAPI, api, testOrigin)
+	RegisterConversations(mux, authAPI, api, &recordingNotifier{}, testOrigin)
 	return mux
 }
 

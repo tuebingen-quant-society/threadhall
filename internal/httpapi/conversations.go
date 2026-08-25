@@ -21,15 +21,24 @@ type ConversationAPI interface {
 	RemoveMember(context.Context, conversation.ChangeMember) error
 }
 
-type conversationHandler struct{ api ConversationAPI }
+type conversationHandler struct {
+	api      ConversationAPI
+	notifier EventNotifier
+}
 
 const maxConversationTargetBytes = 2048
 
 type conversationQueryKey struct{}
 
 // RegisterConversations installs the authenticated conversation HTTP surface.
-func RegisterConversations(mux *http.ServeMux, authAPI AuthAPI, api ConversationAPI, publicOrigin string) {
-	handler := &conversationHandler{api: api}
+func RegisterConversations(
+	mux *http.ServeMux,
+	authAPI AuthAPI,
+	api ConversationAPI,
+	notifier EventNotifier,
+	publicOrigin string,
+) {
+	handler := &conversationHandler{api: api, notifier: notifier}
 	pageRead := func(next http.HandlerFunc) http.Handler {
 		return disableAuthCaching(requireConversationTarget(validateConversationPageQuery,
 			RequireSession(authAPI, next)))
@@ -89,6 +98,7 @@ func (h *conversationHandler) create(w http.ResponseWriter, request *http.Reques
 	if writeConversationProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(0)
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -162,6 +172,7 @@ func (h *conversationHandler) addMember(w http.ResponseWriter, request *http.Req
 	if writeConversationProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(0)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -182,6 +193,7 @@ func (h *conversationHandler) removeMember(w http.ResponseWriter, request *http.
 	if writeConversationProblem(w, err) {
 		return
 	}
+	h.notifier.Notify(0)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tuebingen-quant-society/threadhall/internal/app"
@@ -21,6 +22,7 @@ import (
 	"github.com/tuebingen-quant-society/threadhall/internal/conversation"
 	"github.com/tuebingen-quant-society/threadhall/internal/httpapi"
 	"github.com/tuebingen-quant-society/threadhall/internal/message"
+	"github.com/tuebingen-quant-society/threadhall/internal/realtime"
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 	"golang.org/x/term"
 )
@@ -89,12 +91,27 @@ func serve(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	defer handler.Close()
 	server := &http.Server{Addr: *address, Handler: handler}
 	log.Printf("Threadhall %s listening on %s", version, *address)
 	return server.ListenAndServe()
 }
 
-func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (http.Handler, error) {
+type serverHandler struct {
+	http.Handler
+	pump *realtime.Pump
+	hub  *realtime.Hub
+	once sync.Once
+}
+
+func (h *serverHandler) Close() {
+	h.once.Do(func() {
+		h.pump.Close()
+		h.hub.Close()
+	})
+}
+
+func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (*serverHandler, error) {
 	authService, err := auth.NewService(store.NewAuthStore(db, writer), time.Now, rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("start authentication: %w", err)
@@ -107,11 +124,19 @@ func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (http
 	if err != nil {
 		return nil, fmt.Errorf("start messages: %w", err)
 	}
+	replayStore := store.NewReplayStore(db)
+	hub := realtime.NewHub()
+	pump, err := realtime.NewPump(replayStore, hub)
+	if err != nil {
+		return nil, fmt.Errorf("start realtime event pump: %w", err)
+	}
+	socket := realtime.NewSocket(hub, realtime.NewReplayer(replayStore, pump))
 	handler := app.New(db)
 	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
-	httpapi.RegisterConversations(handler, authService, conversationService, cfg.PublicURL)
-	httpapi.RegisterMessages(handler, authService, messageService, cfg.PublicURL)
-	return handler, nil
+	httpapi.RegisterConversations(handler, authService, conversationService, pump, cfg.PublicURL)
+	httpapi.RegisterMessages(handler, authService, messageService, pump, cfg.PublicURL)
+	httpapi.RegisterRealtime(handler, authService, socket, cfg.PublicURL)
+	return &serverHandler{Handler: handler, pump: pump, hub: hub}, nil
 }
 
 func bootstrapAdmin(arguments []string, stdin *os.File, stdout io.Writer) error {

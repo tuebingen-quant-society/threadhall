@@ -34,6 +34,7 @@ func TestProductionHandlerRejectsInvalidConversationTargetsBeforeSecurity(t *tes
 	if err != nil {
 		t.Fatalf("newServerHandler: %v", err)
 	}
+	t.Cleanup(handler.Close)
 	for _, target := range []struct {
 		method, path, rawQuery string
 	}{
@@ -71,6 +72,7 @@ func TestProductionHandlerRunsMessagePreflightBeforeSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newServerHandler: %v", err)
 	}
+	t.Cleanup(handler.Close)
 	invalidUTF8 := append([]byte(`{"body":"`), 0xff)
 	invalidUTF8 = append(invalidUTF8, []byte(`","idempotency_key":"edit"}`)...)
 	for _, test := range []struct {
@@ -103,6 +105,26 @@ func TestProductionHandlerRunsMessagePreflightBeforeSecurity(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, valid)
 	assertProductionProblem(t, recorder, http.StatusForbidden, "origin_forbidden")
+}
+
+func TestProductionHandlerRegistersRealtimeCursorPreflight(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "threadhall.db"), 1)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writer, err := store.NewWriter(db, 2)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close(); _ = db.Close() })
+	handler, err := newServerHandler(db, writer, config.Config{PublicURL: "https://threadhall.test"})
+	if err != nil {
+		t.Fatalf("newServerHandler: %v", err)
+	}
+	t.Cleanup(handler.Close)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/realtime?after_seq=-1", nil))
+	assertProductionProblem(t, recorder, http.StatusBadRequest, "invalid_request")
 }
 
 func mustJSON(t *testing.T, value any) []byte {

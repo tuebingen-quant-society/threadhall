@@ -11,6 +11,7 @@ import (
 
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
 	"github.com/tuebingen-quant-society/threadhall/internal/message"
+	"github.com/tuebingen-quant-society/threadhall/internal/realtime"
 )
 
 func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testing.T) {
@@ -47,6 +48,23 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	if read.Code != http.StatusOK || api.history.ConversationID != 3 || api.history.UserID != 4 ||
 		api.history.BeforeID != 8 || api.history.Limit != 2 {
 		t.Fatalf("history = status %d query %#v; body=%s", read.Code, api.history, read.Body.String())
+	}
+}
+
+func TestMessageHTTPSignalsCommittedEventWithoutChangingSuccess(t *testing.T) {
+	authAPI := &fakeAuthAPI{user: auth.User{ID: 4, Username: "member"}}
+	api := &fakeMessageAPI{result: message.Result{
+		Message: message.Message{ID: 8, ConversationID: 3, AuthorID: 4},
+		Event:   realtime.Event{Seq: 44, Type: "message.sent", ConversationID: 3},
+	}}
+	notifier := &recordingNotifier{}
+	mux := http.NewServeMux()
+	RegisterMessages(mux, authAPI, api, notifier, testOrigin)
+	csrf := tokenString(0x51)
+	recorder := messageJSONMutation(t, mux, http.MethodPost, "/api/v1/conversations/3/messages",
+		map[string]any{"body": "hello", "idempotency_key": "send"}, csrf, true)
+	if recorder.Code != http.StatusCreated || notifier.sequence != 44 || notifier.calls != 1 {
+		t.Fatalf("response/notifier = %d / %#v", recorder.Code, notifier)
 	}
 }
 
@@ -145,7 +163,7 @@ func assertMessageProblem(t *testing.T, recorder *httptest.ResponseRecorder, sta
 
 func testMessageHandler(authAPI AuthAPI, api MessageAPI) http.Handler {
 	mux := http.NewServeMux()
-	RegisterMessages(mux, authAPI, api, testOrigin)
+	RegisterMessages(mux, authAPI, api, &recordingNotifier{}, testOrigin)
 	return mux
 }
 
@@ -189,6 +207,16 @@ type fakeMessageAPI struct {
 	result  message.Result
 	err     error
 	calls   int
+}
+
+type recordingNotifier struct {
+	sequence int64
+	calls    int
+}
+
+func (n *recordingNotifier) Notify(sequence int64) {
+	n.sequence = sequence
+	n.calls++
 }
 
 func (a *fakeMessageAPI) Send(_ context.Context, command message.Send) (message.Result, error) {

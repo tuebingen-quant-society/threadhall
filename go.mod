@@ -3,6 +3,7 @@ module github.com/tuebingen-quant-society/threadhall
 go 1.26
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/yuin/goldmark v1.8.5
