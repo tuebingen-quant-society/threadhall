@@ -21,8 +21,8 @@ func NewService(repository Repository, now func() time.Time) (*Service, error) {
 }
 
 func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
-	if command.ConversationID <= 0 || command.AuthorID <= 0 || !validBody(command.Body) ||
-		!validIdempotencyKey(command.IdempotencyKey) {
+	if command.ConversationID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
+		!ValidIdempotencyKey(command.IdempotencyKey) {
 		return Result{}, ErrInvalidInput
 	}
 	rendered, err := RenderMarkdown(command.Body)
@@ -37,8 +37,8 @@ func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 }
 
 func (s *Service) Edit(ctx context.Context, command Edit) (Result, error) {
-	if command.MessageID <= 0 || command.AuthorID <= 0 || !validBody(command.Body) ||
-		!validIdempotencyKey(command.IdempotencyKey) {
+	if command.MessageID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
+		!ValidIdempotencyKey(command.IdempotencyKey) {
 		return Result{}, ErrInvalidInput
 	}
 	rendered, err := RenderMarkdown(command.Body)
@@ -52,7 +52,7 @@ func (s *Service) Edit(ctx context.Context, command Edit) (Result, error) {
 }
 
 func (s *Service) Delete(ctx context.Context, command Delete) (Result, error) {
-	if command.MessageID <= 0 || command.AuthorID <= 0 || !validIdempotencyKey(command.IdempotencyKey) {
+	if command.MessageID <= 0 || command.AuthorID <= 0 || !ValidIdempotencyKey(command.IdempotencyKey) {
 		return Result{}, ErrInvalidInput
 	}
 	return s.repository.Delete(ctx, DeleteRecord{
@@ -72,10 +72,12 @@ func (s *Service) History(ctx context.Context, query History) (Page, error) {
 	return s.repository.History(ctx, query)
 }
 
-func validBody(body string) bool {
+// ValidBody reports whether body satisfies the public raw-message contract.
+func ValidBody(body string) bool {
 	return body != "" && utf8.ValidString(body) && len(body) <= MaxBodyBytes && strings.TrimSpace(body) != ""
 }
 
-func validIdempotencyKey(key string) bool {
+// ValidIdempotencyKey reports whether key is a bounded nonblank UTF-8 key.
+func ValidIdempotencyKey(key string) bool {
 	return strings.TrimSpace(key) != "" && utf8.ValidString(key) && len(key) <= MaxIdempotencyKeyBytes
 }

@@ -56,18 +56,22 @@ func TestMessageHTTPRejectsClientHTMLInvalidUTF8AndOversizedBodiesBeforeAPI(t *t
 	handler := testMessageHandler(authAPI, api)
 	csrf := tokenString(0x54)
 
-	for name, body := range map[string]any{
-		"client-rendered-html": map[string]any{
+	for _, test := range []struct {
+		name, code string
+		body       any
+		status     int
+	}{
+		{name: "client-rendered-html", status: 400, code: "invalid_request", body: map[string]any{
 			"body": "hello", "rendered_body": "<script>pwn()</script>", "idempotency_key": "send",
-		},
-		"oversized-body": map[string]any{
+		}},
+		{name: "oversized-body", status: 413, code: "request_too_large", body: map[string]any{
 			"body": strings.Repeat("a", message.MaxBodyBytes+1), "idempotency_key": "send",
-		},
+		}},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			recorder := messageJSONMutation(t, handler, http.MethodPost,
-				"/api/v1/conversations/3/messages", body, csrf, true)
-			assertMessageProblem(t, recorder, http.StatusBadRequest, "invalid_request")
+				"/api/v1/conversations/3/messages", test.body, csrf, true)
+			assertMessageProblem(t, recorder, test.status, test.code)
 		})
 	}
 	invalid := []byte(`{"body":"`)

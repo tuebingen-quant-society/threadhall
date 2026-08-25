@@ -15,7 +15,7 @@ func (s *MessageStore) History(ctx context.Context, query message.History) (mess
 		FROM messages m
 		JOIN conversation_members member
 			ON member.conversation_id = m.conversation_id AND member.user_id = ?
-		WHERE m.conversation_id = ? AND (? = 0 OR m.id < ?)
+		WHERE m.conversation_id = ? AND m.reply_to_id IS NULL AND (? = 0 OR m.id < ?)
 		ORDER BY m.id DESC LIMIT ?`, query.UserID, query.ConversationID,
 		query.BeforeID, query.BeforeID, query.Limit+1)
 	if err != nil {

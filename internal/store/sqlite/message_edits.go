@@ -26,7 +26,7 @@ func (s *MessageStore) Edit(ctx context.Context, record message.EditRecord) (mes
 		}
 		update, err := tx.ExecContext(ctx, `UPDATE messages
 			SET body = ?, rendered_body = ?, edited_at = ?
-			WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
+			WHERE id = ? AND author_id = ? AND reply_to_id IS NULL AND deleted_at IS NULL`,
 			record.Body, record.RenderedBody, unix(record.EditedAt), record.MessageID, record.AuthorID)
 		if err != nil {
 			return err
@@ -69,7 +69,7 @@ func (s *MessageStore) Delete(ctx context.Context, record message.DeleteRecord) 
 		}
 		update, err := tx.ExecContext(ctx, `UPDATE messages
 			SET body = '', rendered_body = '', deleted_at = ?
-			WHERE id = ? AND author_id = ? AND deleted_at IS NULL`,
+			WHERE id = ? AND author_id = ? AND reply_to_id IS NULL AND deleted_at IS NULL`,
 			unix(record.DeletedAt), record.MessageID, record.AuthorID)
 		if err != nil {
 			return err
@@ -101,7 +101,8 @@ func editableMessage(ctx context.Context, tx *sql.Tx, messageID, authorID int64)
 		FROM messages m
 		JOIN conversation_members member
 			ON member.conversation_id = m.conversation_id AND member.user_id = ?
-		WHERE m.id = ? AND m.author_id = ? AND m.deleted_at IS NULL`, authorID, messageID, authorID))
+		WHERE m.id = ? AND m.author_id = ? AND m.reply_to_id IS NULL
+			AND m.deleted_at IS NULL`, authorID, messageID, authorID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return message.Message{}, message.ErrNotFound
 	}

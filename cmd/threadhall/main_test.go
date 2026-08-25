@@ -13,6 +13,7 @@ import (
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
 	"github.com/tuebingen-quant-society/threadhall/internal/config"
 	"github.com/tuebingen-quant-society/threadhall/internal/httpapi"
+	"github.com/tuebingen-quant-society/threadhall/internal/message"
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 )
 
@@ -53,6 +54,74 @@ func TestProductionHandlerRejectsInvalidConversationTargetsBeforeSecurity(t *tes
 		if recorder.Code != http.StatusBadRequest || problem.Code != "invalid_request" {
 			t.Fatalf("%s %s = status %d problem %#v", target.method, target.rawQuery, recorder.Code, problem)
 		}
+	}
+}
+
+func TestProductionHandlerRunsMessagePreflightBeforeSecurity(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "threadhall.db"), 1)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writer, err := store.NewWriter(db, 2)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close(); _ = db.Close() })
+	handler, err := newServerHandler(db, writer, config.Config{PublicURL: "https://threadhall.test"})
+	if err != nil {
+		t.Fatalf("newServerHandler: %v", err)
+	}
+	invalidUTF8 := append([]byte(`{"body":"`), 0xff)
+	invalidUTF8 = append(invalidUTF8, []byte(`","idempotency_key":"edit"}`)...)
+	for _, test := range []struct {
+		name, method, path, contentType string
+		body                            []byte
+		status                          int
+		code                            string
+	}{
+		{name: "history id", method: http.MethodGet, path: "/api/v1/conversations/nope/messages", status: 400, code: "invalid_request"},
+		{name: "send id", method: http.MethodPost, path: "/api/v1/conversations/0/messages", contentType: "application/json", body: []byte(`{"body":"hello","idempotency_key":"send"}`), status: 400, code: "invalid_request"},
+		{name: "content type", method: http.MethodPost, path: "/api/v1/conversations/1/messages", contentType: "text/plain", body: []byte(`{"body":"hello","idempotency_key":"send"}`), status: 400, code: "invalid_request"},
+		{name: "oversized body", method: http.MethodPost, path: "/api/v1/conversations/1/messages", contentType: "application/json", body: mustJSON(t, map[string]any{"body": strings.Repeat("a", message.MaxBodyBytes+1), "idempotency_key": "send"}), status: 413, code: "request_too_large"},
+		{name: "invalid UTF-8", method: http.MethodPatch, path: "/api/v1/messages/1", contentType: "application/json", body: invalidUTF8, status: 400, code: "invalid_request"},
+		{name: "unknown field", method: http.MethodPatch, path: "/api/v1/messages/1", contentType: "application/json", body: []byte(`{"body":"hello","idempotency_key":"edit","unknown":true}`), status: 400, code: "invalid_request"},
+		{name: "trailing object", method: http.MethodPatch, path: "/api/v1/messages/1", contentType: "application/json", body: []byte(`{"body":"hello","idempotency_key":"edit"}{}`), status: 400, code: "invalid_request"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, bytes.NewReader(test.body))
+			if test.contentType != "" {
+				request.Header.Set("Content-Type", test.contentType)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			assertProductionProblem(t, recorder, test.status, test.code)
+		})
+	}
+	valid := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/1/messages",
+		bytes.NewReader([]byte(`{"body":"hello","idempotency_key":"send"}`)))
+	valid.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, valid)
+	assertProductionProblem(t, recorder, http.StatusForbidden, "origin_forbidden")
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal JSON: %v", err)
+	}
+	return encoded
+}
+
+func assertProductionProblem(t *testing.T, recorder *httptest.ResponseRecorder, status int, code string) {
+	t.Helper()
+	var problem httpapi.Problem
+	if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v; body=%s", err, recorder.Body.String())
+	}
+	if recorder.Code != status || problem.Code != code || recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("problem = status %d body %#v headers %#v", recorder.Code, problem, recorder.Header())
 	}
 }
 
