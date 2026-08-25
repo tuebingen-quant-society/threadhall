@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
@@ -68,6 +69,58 @@ func TestConversationHTTPMapsStableDomainProblems(t *testing.T) {
 				t.Fatalf("problem = status %d body %#v", recorder.Code, problem)
 			}
 		})
+	}
+}
+
+func TestConversationRoutesRejectOversizedOrMalformedTargetsBeforeAuthentication(t *testing.T) {
+	handler := testConversationHandler(&fakeAuthAPI{}, &fakeConversationAPI{})
+	oversizedQuery := "limit=" + strings.Repeat("0", 2049) + "1"
+	for _, target := range []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/api/v1/conversations"},
+		{http.MethodPost, "/api/v1/conversations"},
+		{http.MethodGet, "/api/v1/conversations/1"},
+		{http.MethodGet, "/api/v1/conversations/1/members"},
+		{http.MethodPost, "/api/v1/conversations/1/members"},
+		{http.MethodDelete, "/api/v1/conversations/1/members/2"},
+	} {
+		request := httptest.NewRequest(target.method, target.path, nil)
+		request.URL.RawQuery = oversizedQuery
+		assertInvalidConversationTarget(t, handler, request)
+	}
+
+	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	malformed.URL.RawQuery = "limit=%zz"
+	assertInvalidConversationTarget(t, handler, malformed)
+
+	oversizedEncodedPath := "/api/v1/conversations/" + strings.Repeat("%30", 700) + "1"
+	assertInvalidConversationTarget(t, handler, httptest.NewRequest(http.MethodGet, oversizedEncodedPath, nil))
+}
+
+func TestConversationPagesRejectDuplicateAndInvalidScalars(t *testing.T) {
+	authAPI := &fakeAuthAPI{user: auth.User{ID: 1, Username: "admin"}}
+	handler := testConversationHandler(authAPI, &fakeConversationAPI{})
+	for _, rawQuery := range []string{
+		"limit=1&limit=2", "before_id=1&before_id=2", "before_id=0", "before_id=nope",
+		"limit=0", "limit=101", "limit=nope", "unknown=1",
+	} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?"+rawQuery, nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: tokenString(0x23)})
+		assertInvalidConversationTarget(t, handler, request)
+	}
+}
+
+func assertInvalidConversationTarget(t *testing.T, handler http.Handler, request *http.Request) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	var problem Problem
+	if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode %s %s problem: %v; body=%s", request.Method, request.URL, err, recorder.Body.String())
+	}
+	if recorder.Code != http.StatusBadRequest || problem.Code != "invalid_request" {
+		t.Fatalf("%s %s = status %d problem %#v", request.Method, request.URL, recorder.Code, problem)
 	}
 }
 

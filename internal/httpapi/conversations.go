@@ -23,14 +23,19 @@ type ConversationAPI interface {
 
 type conversationHandler struct{ api ConversationAPI }
 
+const maxConversationTargetBytes = 2048
+
+type conversationQueryKey struct{}
+
 // RegisterConversations installs the authenticated conversation HTTP surface.
 func RegisterConversations(mux *http.ServeMux, authAPI AuthAPI, api ConversationAPI, publicOrigin string) {
 	handler := &conversationHandler{api: api}
 	read := func(next http.HandlerFunc) http.Handler {
-		return disableAuthCaching(RequireSession(authAPI, next))
+		return disableAuthCaching(requireConversationTarget(RequireSession(authAPI, next)))
 	}
 	mutation := func(next http.HandlerFunc) http.Handler {
-		return disableAuthCaching(requireMutationSecurity(publicOrigin, RequireSession(authAPI, next)))
+		return disableAuthCaching(requireConversationTarget(
+			requireMutationSecurity(publicOrigin, RequireSession(authAPI, next))))
 	}
 	mux.Handle("GET /api/v1/conversations", read(handler.list))
 	mux.Handle("POST /api/v1/conversations", mutation(handler.create))
@@ -48,6 +53,9 @@ type createConversationRequest struct {
 }
 
 func (h *conversationHandler) create(w http.ResponseWriter, request *http.Request) {
+	if rejectConversationQuery(w, request) {
+		return
+	}
 	var body createConversationRequest
 	if decodeAuthJSON(w, request, &body) != nil {
 		writeInvalidRequest(w)
@@ -83,7 +91,7 @@ func (h *conversationHandler) create(w http.ResponseWriter, request *http.Reques
 }
 
 func (h *conversationHandler) list(w http.ResponseWriter, request *http.Request) {
-	beforeID, limit, err := boundedPage(request.URL.Query())
+	beforeID, limit, err := boundedPage(conversationQuery(request.Context()))
 	if err != nil {
 		writeConversationProblem(w, err)
 		return
@@ -99,6 +107,9 @@ func (h *conversationHandler) list(w http.ResponseWriter, request *http.Request)
 }
 
 func (h *conversationHandler) detail(w http.ResponseWriter, request *http.Request) {
+	if rejectConversationQuery(w, request) {
+		return
+	}
 	conversationID, err := positivePathID(request, "conversation_id")
 	if err != nil {
 		writeConversationProblem(w, err)
@@ -118,7 +129,7 @@ func (h *conversationHandler) members(w http.ResponseWriter, request *http.Reque
 		writeConversationProblem(w, err)
 		return
 	}
-	beforeID, limit, err := boundedPage(request.URL.Query())
+	beforeID, limit, err := boundedPage(conversationQuery(request.Context()))
 	if err != nil {
 		writeConversationProblem(w, err)
 		return
@@ -139,6 +150,9 @@ type memberMutationRequest struct {
 }
 
 func (h *conversationHandler) addMember(w http.ResponseWriter, request *http.Request) {
+	if rejectConversationQuery(w, request) {
+		return
+	}
 	conversationID, err := positivePathID(request, "conversation_id")
 	var body memberMutationRequest
 	if err != nil || decodeAuthJSON(w, request, &body) != nil {
@@ -156,6 +170,9 @@ func (h *conversationHandler) addMember(w http.ResponseWriter, request *http.Req
 }
 
 func (h *conversationHandler) removeMember(w http.ResponseWriter, request *http.Request) {
+	if rejectConversationQuery(w, request) {
+		return
+	}
 	conversationID, err := positivePathID(request, "conversation_id")
 	userID, userErr := positivePathID(request, "user_id")
 	var body struct {
@@ -181,6 +198,35 @@ func positivePathID(request *http.Request, name string) (int64, error) {
 		return 0, conversation.ErrInvalidInput
 	}
 	return id, nil
+}
+
+func requireConversationTarget(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if len(request.URL.EscapedPath()) > maxConversationTargetBytes || len(request.URL.RawQuery) > maxConversationTargetBytes {
+			writeConversationProblem(w, conversation.ErrInvalidInput)
+			return
+		}
+		values, err := url.ParseQuery(request.URL.RawQuery)
+		if err != nil {
+			writeConversationProblem(w, conversation.ErrInvalidInput)
+			return
+		}
+		ctx := context.WithValue(request.Context(), conversationQueryKey{}, values)
+		next.ServeHTTP(w, request.WithContext(ctx))
+	})
+}
+
+func conversationQuery(ctx context.Context) url.Values {
+	values, _ := ctx.Value(conversationQueryKey{}).(url.Values)
+	return values
+}
+
+func rejectConversationQuery(w http.ResponseWriter, request *http.Request) bool {
+	if len(conversationQuery(request.Context())) == 0 {
+		return false
+	}
+	writeConversationProblem(w, conversation.ErrInvalidInput)
+	return true
 }
 
 func boundedPage(values url.Values) (int64, int, error) {

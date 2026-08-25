@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -83,21 +84,28 @@ func serve(arguments []string) error {
 		return fmt.Errorf("start persistence writer: %w", err)
 	}
 	defer writer.Close()
-	authService, err := auth.NewService(store.NewAuthStore(db, writer), time.Now, rand.Reader)
+	handler, err := newServerHandler(db, writer, cfg)
 	if err != nil {
-		return fmt.Errorf("start authentication: %w", err)
+		return err
 	}
-	conversationService, err := conversation.NewService(store.NewConversationStore(db, writer), time.Now)
-	if err != nil {
-		return fmt.Errorf("start conversations: %w", err)
-	}
-
-	handler := app.New(db)
-	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
-	httpapi.RegisterConversations(handler, authService, conversationService, cfg.PublicURL)
 	server := &http.Server{Addr: *address, Handler: handler}
 	log.Printf("Threadhall %s listening on %s", version, *address)
 	return server.ListenAndServe()
+}
+
+func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (http.Handler, error) {
+	authService, err := auth.NewService(store.NewAuthStore(db, writer), time.Now, rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("start authentication: %w", err)
+	}
+	conversationService, err := conversation.NewService(store.NewConversationStore(db, writer), time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("start conversations: %w", err)
+	}
+	handler := app.New(db)
+	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
+	httpapi.RegisterConversations(handler, authService, conversationService, cfg.PublicURL)
+	return handler, nil
 }
 
 func bootstrapAdmin(arguments []string, stdin *os.File, stdout io.Writer) error {

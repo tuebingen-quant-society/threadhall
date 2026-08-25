@@ -2,14 +2,49 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
+	"github.com/tuebingen-quant-society/threadhall/internal/config"
+	"github.com/tuebingen-quant-society/threadhall/internal/httpapi"
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 )
+
+func TestProductionHandlerBoundsConversationTargetBeforeAuthentication(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "threadhall.db"), 1)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writer, err := store.NewWriter(db, 2)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = writer.Close()
+		_ = db.Close()
+	})
+	handler, err := newServerHandler(db, writer, config.Config{PublicURL: "https://threadhall.test"})
+	if err != nil {
+		t.Fatalf("newServerHandler: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	request.URL.RawQuery = "limit=" + strings.Repeat("0", 2049) + "1"
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	var problem httpapi.Problem
+	if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if recorder.Code != http.StatusBadRequest || problem.Code != "invalid_request" {
+		t.Fatalf("response = status %d problem %#v", recorder.Code, problem)
+	}
+}
 
 func TestRunPreservesVersionCommand(t *testing.T) {
 	input := emptyInput(t)

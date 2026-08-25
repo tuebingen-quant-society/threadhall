@@ -30,7 +30,11 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("read migration %d: %w", version, err)
 		}
-		if err := applyMigration(ctx, db, version, string(script)); err != nil {
+		var prepare func(context.Context, *sql.Tx) error
+		if version == 2 {
+			prepare = renameCollidingV1Channels
+		}
+		if err := applyPreparedMigration(ctx, db, version, string(script), prepare); err != nil {
 			return err
 		}
 	}
@@ -38,12 +42,27 @@ func migrate(ctx context.Context, db *sql.DB) error {
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, version int, script string) error {
+	return applyPreparedMigration(ctx, db, version, script, nil)
+}
+
+func applyPreparedMigration(
+	ctx context.Context,
+	db *sql.DB,
+	version int,
+	script string,
+	prepare func(context.Context, *sql.Tx) error,
+) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration %d: %w", version, err)
 	}
 	defer tx.Rollback()
 
+	if prepare != nil {
+		if err := prepare(ctx, tx); err != nil {
+			return fmt.Errorf("prepare migration %d: %w", version, err)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, script); err != nil {
 		return fmt.Errorf("apply migration %d: %w", version, err)
 	}

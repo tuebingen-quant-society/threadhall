@@ -22,6 +22,21 @@ func (s *ConversationStore) CreateChannel(ctx context.Context, record conversati
 			created, err = conversationByID(ctx, tx, id)
 			return err
 		}
+		legacy, legacyErr := legacyConversationByKey(ctx, tx, record.CreatorID, record.IdempotencyKey)
+		if legacyErr == nil {
+			if legacy.Kind != record.Kind || legacy.Name != record.Name {
+				return conversation.ErrConflict
+			}
+			if err := recordMutation(ctx, tx, record.CreatorID, record.IdempotencyKey, "create_channel",
+				fingerprint, legacy.ID, unix(legacy.CreatedAt)); err != nil {
+				return err
+			}
+			created = legacy
+			return nil
+		}
+		if !errors.Is(legacyErr, sql.ErrNoRows) {
+			return legacyErr
+		}
 		result, err := tx.ExecContext(ctx, `
 			INSERT INTO conversations(kind, name, created_by, idempotency_key, created_at)
 			SELECT ?, ?, id, ?, ? FROM users WHERE id = ?`,
@@ -64,6 +79,9 @@ func (s *ConversationStore) CreateDM(ctx context.Context, record conversation.DM
 		}
 		if found {
 			created, err = conversationByID(ctx, tx, id)
+			return err
+		}
+		if err := rejectLegacyIdempotency(ctx, tx, record.RequesterID, record.IdempotencyKey); err != nil {
 			return err
 		}
 		var users int
@@ -156,6 +174,9 @@ func (s *ConversationStore) changeMember(ctx context.Context, record conversatio
 		if err != nil || found {
 			return err
 		}
+		if err := rejectLegacyIdempotency(ctx, tx, record.ActorID, record.IdempotencyKey); err != nil {
+			return err
+		}
 		if add {
 			var userExists bool
 			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)", record.UserID).Scan(&userExists); err != nil {
@@ -220,6 +241,22 @@ func recordMutation(ctx context.Context, tx *sql.Tx, actorID int64, key, operati
 func conversationByID(ctx context.Context, tx *sql.Tx, id int64) (conversation.Conversation, error) {
 	return scanConversation(tx.QueryRowContext(ctx, `SELECT id, kind, name, created_by, created_at
 		FROM conversations WHERE id = ?`, id))
+}
+
+func legacyConversationByKey(ctx context.Context, tx *sql.Tx, actorID int64, key string) (conversation.Conversation, error) {
+	return scanConversation(tx.QueryRowContext(ctx, `SELECT id, kind, name, created_by, created_at
+		FROM conversations WHERE created_by = ? AND idempotency_key = ?`, actorID, key))
+}
+
+func rejectLegacyIdempotency(ctx context.Context, tx *sql.Tx, actorID int64, key string) error {
+	_, err := legacyConversationByKey(ctx, tx, actorID, key)
+	if err == nil {
+		return conversation.ErrConflict
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	return err
 }
 
 func conversationByDMPair(ctx context.Context, tx *sql.Tx, low, high int64) (conversation.Conversation, error) {
