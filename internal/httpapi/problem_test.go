@@ -20,8 +20,8 @@ func TestWriteProblem(t *testing.T) {
 	if got := recorder.Code; got != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", got, http.StatusBadRequest)
 	}
-	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
-		t.Fatalf("Content-Type = %q, want %q", got, "application/json")
+	if got := recorder.Header().Get("Content-Type"); got != "application/problem+json" {
+		t.Fatalf("Content-Type = %q, want %q", got, "application/problem+json")
 	}
 
 	var body map[string]any
