@@ -1,0 +1,42 @@
+package message
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+var (
+	ErrInvalidInput = errors.New("invalid message input")
+	ErrNotFound     = errors.New("message resource not found")
+	ErrConflict     = errors.New("message request conflicts with existing state")
+	ErrBusy         = errors.New("message persistence is busy")
+)
+
+type SendRecord struct {
+	ConversationID, AuthorID int64
+	Body, RenderedBody       string
+	IdempotencyKey           string
+	CreatedAt                time.Time
+}
+
+type EditRecord struct {
+	MessageID, AuthorID int64
+	Body, RenderedBody  string
+	IdempotencyKey      string
+	EditedAt            time.Time
+}
+
+type DeleteRecord struct {
+	MessageID, AuthorID int64
+	IdempotencyKey      string
+	DeletedAt           time.Time
+}
+
+// Repository is the storage-independent durable-message persistence port.
+type Repository interface {
+	Send(context.Context, SendRecord) (Result, error)
+	Edit(context.Context, EditRecord) (Result, error)
+	Delete(context.Context, DeleteRecord) (Result, error)
+	History(context.Context, History) (Page, error)
+}

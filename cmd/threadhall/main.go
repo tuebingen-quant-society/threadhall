@@ -20,6 +20,7 @@ import (
 	"github.com/tuebingen-quant-society/threadhall/internal/config"
 	"github.com/tuebingen-quant-society/threadhall/internal/conversation"
 	"github.com/tuebingen-quant-society/threadhall/internal/httpapi"
+	"github.com/tuebingen-quant-society/threadhall/internal/message"
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 	"golang.org/x/term"
 )
@@ -102,9 +103,14 @@ func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (http
 	if err != nil {
 		return nil, fmt.Errorf("start conversations: %w", err)
 	}
+	messageService, err := message.NewService(store.NewMessageStore(db, writer), time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("start messages: %w", err)
+	}
 	handler := app.New(db)
 	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
 	httpapi.RegisterConversations(handler, authService, conversationService, cfg.PublicURL)
+	httpapi.RegisterMessages(handler, authService, messageService, cfg.PublicURL)
 	return handler, nil
 }
 
