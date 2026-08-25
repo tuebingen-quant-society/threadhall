@@ -1,7 +1,9 @@
 .PHONY: test web build check
 
+GO_TAGS := sqlite_fts5
+
 test: web
-	go test ./...
+	go test -tags $(GO_TAGS) ./...
 	npm --prefix web test -- --run
 
 web:
@@ -9,6 +11,6 @@ web:
 	npm --prefix web run build
 
 build: web
-	go build -o bin/threadhall ./cmd/threadhall
+	go build -tags $(GO_TAGS) -o bin/threadhall ./cmd/threadhall
 
 check: test build

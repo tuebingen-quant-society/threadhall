@@ -7,6 +7,8 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -tags=sqlite_fts5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
