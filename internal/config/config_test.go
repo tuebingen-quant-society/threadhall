@@ -22,6 +22,7 @@ func TestConfigValidate(t *testing.T) {
 		{name: "state path is required", change: func(c *Config) { c.StatePath = "" }},
 		{name: "public URL is required", change: func(c *Config) { c.PublicURL = "" }},
 		{name: "public URL must be absolute HTTP", change: func(c *Config) { c.PublicURL = "/threadhall" }},
+		{name: "public URL must be an exact origin", change: func(c *Config) { c.PublicURL = "http://threadhall.test/chat" }},
 		{name: "production requires secure cookies", change: func(c *Config) {
 			c.Production = true
 			c.PublicURL = "https://threadhall.test"

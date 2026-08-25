@@ -37,6 +37,11 @@ func (c Config) Validate() error {
 		(publicURL.Scheme != "http" && publicURL.Scheme != "https") {
 		return errors.New("public URL must be an absolute HTTP or HTTPS URL")
 	}
+	publicOrigin := publicURL.Scheme + "://" + publicURL.Host
+	if c.PublicURL != publicOrigin || publicURL.User != nil ||
+		publicURL.RawQuery != "" || publicURL.Fragment != "" {
+		return errors.New("public URL must be an exact origin without path, credentials, query, or fragment")
+	}
 	if c.Production && !c.SecureCookies {
 		return errors.New("production requires secure cookies")
 	}

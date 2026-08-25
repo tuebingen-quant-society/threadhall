@@ -9,7 +9,7 @@ import (
 )
 
 // New returns the Threadhall HTTP application backed by db.
-func New(db *sql.DB) http.Handler {
+func New(db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health(db))
 	mux.Handle("/", webassets.Handler())
