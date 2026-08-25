@@ -2,7 +2,7 @@
 
 Date: 2026-08-25
 
-Status: Approved in chat; pending written-spec review
+Status: Approved
 
 Steward: Tübingen Quant Society
 
