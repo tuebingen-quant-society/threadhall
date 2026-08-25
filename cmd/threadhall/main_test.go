@@ -37,7 +37,7 @@ func TestProductionHandlerRejectsInvalidConversationTargetsBeforeSecurity(t *tes
 		method, path, rawQuery string
 	}{
 		{http.MethodGet, "/api/v1/conversations", "limit=" + strings.Repeat("0", 2049) + "1"},
-		{http.MethodGet, "/api/v1/conversations", "before=nope"},
+		{http.MethodGet, "/api/v1/conversations", "before_id=nope"},
 		{http.MethodPost, "/api/v1/conversations", "unexpected=1"},
 	} {
 		request := httptest.NewRequest(target.method, target.path, nil)

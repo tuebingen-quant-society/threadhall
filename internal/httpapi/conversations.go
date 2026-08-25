@@ -234,14 +234,14 @@ func validateNoConversationQuery(values url.Values) error {
 
 func boundedPage(values url.Values) (int64, int, error) {
 	for key, entries := range values {
-		if (key != "before" && key != "limit") || len(entries) != 1 || entries[0] == "" {
+		if (key != "before_id" && key != "limit") || len(entries) != 1 || entries[0] == "" {
 			return 0, 0, conversation.ErrInvalidInput
 		}
 	}
 	var beforeID int64
 	var limit int
 	var err error
-	if value := values.Get("before"); value != "" {
+	if value := values.Get("before_id"); value != "" {
 		beforeID, err = strconv.ParseInt(value, 10, 64)
 		if err != nil || beforeID <= 0 {
 			return 0, 0, conversation.ErrInvalidInput

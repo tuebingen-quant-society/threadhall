@@ -102,12 +102,26 @@ func TestConversationPagesRejectSemanticQueryErrorsBeforeAuthentication(t *testi
 	handler := testConversationHandler(&fakeAuthAPI{}, &fakeConversationAPI{})
 	for _, path := range []string{"/api/v1/conversations", "/api/v1/conversations/1/members"} {
 		for _, rawQuery := range []string{
-			"limit=1&limit=2", "before=1&before=2", "before=", "limit=", "before=0", "before=nope",
-			"limit=0", "limit=101", "limit=nope", "unknown=1", "before_id=1",
+			"limit=1&limit=2", "before_id=1&before_id=2", "before_id=", "limit=", "before_id=0", "before_id=nope",
+			"limit=0", "limit=101", "limit=nope", "unknown=1", "before=1",
 		} {
 			request := httptest.NewRequest(http.MethodGet, path+"?"+rawQuery, nil)
 			assertInvalidConversationTarget(t, handler, request)
 		}
+	}
+}
+
+func TestConversationPagesAcceptValidBeforeIDUntilAuthentication(t *testing.T) {
+	handler := testConversationHandler(&fakeAuthAPI{}, &fakeConversationAPI{})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?before_id=7&limit=2", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	var problem Problem
+	if err := json.NewDecoder(recorder.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode authentication problem: %v", err)
+	}
+	if recorder.Code != http.StatusUnauthorized || problem.Code != "authentication_required" {
+		t.Fatalf("valid before_id response = status %d problem %#v", recorder.Code, problem)
 	}
 }
 
