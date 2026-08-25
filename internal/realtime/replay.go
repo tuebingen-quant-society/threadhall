@@ -65,7 +65,7 @@ func (r *Replayer) CatchUp(
 	if afterSeq > highWater {
 		return ErrInvalidCursor
 	}
-	if afterSeq > 0 && minimum > 0 && afterSeq < minimum {
+	if afterSeq > 0 && minimum > 0 && afterSeq < minimum-1 {
 		return ErrResyncRequired
 	}
 	if afterSeq > 0 && highWater-afterSeq > MaxReplayEvents {

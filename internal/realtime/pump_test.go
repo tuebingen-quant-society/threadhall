@@ -3,9 +3,75 @@ package realtime
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestPumpSafetyPollDrainsCommitWithoutNotify(t *testing.T) {
+	source := &memoryEventLog{}
+	hub := NewHub()
+	pump, err := NewPump(source, hub)
+	if err != nil {
+		t.Fatalf("NewPump: %v", err)
+	}
+	t.Cleanup(pump.Close)
+	subscription := hub.Subscribe(1, 0)
+	subscription.SetMemberships([]int64{3})
+	subscription.FinishReplay(0)
+	source.append(testEvent(1, `{}`))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	delivery, err := subscription.Next(ctx)
+	if err != nil || delivery.Event.Seq != 1 {
+		t.Fatalf("safety-poll delivery = (seq %d, %v), want seq 1", delivery.Event.Seq, err)
+	}
+}
+
+func TestPumpCloseCancelsBlockedOrderedRead(t *testing.T) {
+	source := newBlockedEventLog()
+	pump, err := NewPump(source, NewHub())
+	if err != nil {
+		t.Fatalf("NewPump: %v", err)
+	}
+	pump.Notify(1)
+	<-source.entered
+	closed := make(chan struct{})
+	go func() {
+		pump.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(200 * time.Millisecond):
+		close(source.release)
+		<-closed
+		t.Fatal("Pump.Close did not cancel blocked OrderedEvents")
+	}
+}
+
+func TestPumpCloseInterruptsContinuouslyFullPages(t *testing.T) {
+	source := &fullPageEventLog{started: make(chan struct{})}
+	pump, err := NewPump(source, NewHub())
+	if err != nil {
+		t.Fatalf("NewPump: %v", err)
+	}
+	pump.Notify(1)
+	<-source.started
+	closed := make(chan struct{})
+	go func() {
+		pump.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(200 * time.Millisecond):
+		source.halt.Store(true)
+		<-closed
+		t.Fatal("Pump.Close did not interrupt continuously full pages")
+	}
+}
 
 func TestPumpDrainsDurableEventsInSequenceDespiteReversedNotifications(t *testing.T) {
 	source := &memoryEventLog{}
@@ -101,6 +167,53 @@ func (s *memoryEventLog) OrderedEvents(
 		if event.Seq > afterSeq && len(events) < limit {
 			events = append(events, event)
 		}
+	}
+	return events, nil
+}
+
+type blockedEventLog struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockedEventLog() *blockedEventLog {
+	return &blockedEventLog{entered: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (*blockedEventLog) EventBounds(context.Context) (int64, int64, error) { return 0, 0, nil }
+
+func (s *blockedEventLog) OrderedEvents(ctx context.Context, _ int64, _ int) ([]Event, error) {
+	s.once.Do(func() { close(s.entered) })
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.release:
+		return nil, nil
+	}
+}
+
+type fullPageEventLog struct {
+	started chan struct{}
+	once    sync.Once
+	halt    atomic.Bool
+}
+
+func (*fullPageEventLog) EventBounds(context.Context) (int64, int64, error) { return 0, 0, nil }
+
+func (s *fullPageEventLog) OrderedEvents(
+	ctx context.Context, afterSeq int64, limit int,
+) ([]Event, error) {
+	s.once.Do(func() { close(s.started) })
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.halt.Load() {
+		return nil, nil
+	}
+	events := make([]Event, limit)
+	for index := range events {
+		events[index] = testEvent(afterSeq+int64(index)+1, `{}`)
 	}
 	return events, nil
 }

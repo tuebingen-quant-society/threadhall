@@ -14,7 +14,7 @@ func TestReplayRejectsStaleAndOversizedCatchUpCursors(t *testing.T) {
 		after, min int64
 		max        int64
 	}{
-		{name: "below retained minimum", after: 41, min: 42, max: 90},
+		{name: "below retained minimum boundary", after: 40, min: 42, max: 90},
 		{name: "above catch-up window", after: 1, min: 1, max: MaxReplayEvents + 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -31,6 +31,38 @@ func TestReplayRejectsStaleAndOversizedCatchUpCursors(t *testing.T) {
 			if store.pageCalls != 0 {
 				t.Fatalf("replay page calls = %d, want 0", store.pageCalls)
 			}
+		})
+	}
+}
+
+func TestReplayAcceptsRetainedMinimumBoundaryAndEqualCursor(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		after, min int64
+		max        int64
+		want       []int64
+	}{
+		{name: "boundary M minus one", after: 41, min: 42, max: 43, want: []int64{42, 43}},
+		{name: "equal to M", after: 42, min: 42, max: 43, want: []int64{43}},
+		{name: "M equals one", after: 0, min: 1, max: 1, want: []int64{1}},
+		{name: "empty log", after: 0, min: 0, max: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &memoryReplayStore{
+				min: test.min, max: test.max, members: map[int64]map[int64]bool{1: {3: true}},
+			}
+			subscription := NewHub().Subscribe(1, test.after)
+			var got []int64
+			err := NewReplayer(store, noopDrainer{}).CatchUp(
+				context.Background(), subscription, test.after, func(event Event) error {
+					got = append(got, event.Seq)
+					return nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("CatchUp: %v", err)
+			}
+			assertSequences(t, got, test.want)
 		})
 	}
 }

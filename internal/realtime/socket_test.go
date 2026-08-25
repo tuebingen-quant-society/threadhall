@@ -33,7 +33,7 @@ func TestSocketReplaysStableEventEnvelope(t *testing.T) {
 
 func TestSocketEmitsResyncRequiredForStaleCursor(t *testing.T) {
 	store := &memoryReplayStore{
-		min: 2, max: 2, members: map[int64]map[int64]bool{1: {3: true}},
+		min: 3, max: 3, members: map[int64]map[int64]bool{1: {3: true}},
 	}
 	connection := dialTestSocket(t, store, NewHub(), 1)
 	defer connection.CloseNow()
