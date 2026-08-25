@@ -1,8 +1,11 @@
+import { useMemo } from "preact/hooks";
+
+import { ApiClient } from "./api/client";
+import { SessionProvider } from "./auth/session";
+import { ChatWorkspace } from "./chat-workspace";
+import "./styles.css";
+
 export function App() {
-	return (
-		<main>
-			<h1>Threadhall</h1>
-			<p>Team chat for humans and agents.</p>
-		</main>
-	);
+	const api = useMemo(() => new ApiClient(), []);
+	return <SessionProvider api={api}><ChatWorkspace api={api} /></SessionProvider>;
 }
