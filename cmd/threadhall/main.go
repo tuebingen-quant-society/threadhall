@@ -17,6 +17,7 @@ import (
 	"github.com/tuebingen-quant-society/threadhall/internal/app"
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
 	"github.com/tuebingen-quant-society/threadhall/internal/config"
+	"github.com/tuebingen-quant-society/threadhall/internal/conversation"
 	"github.com/tuebingen-quant-society/threadhall/internal/httpapi"
 	store "github.com/tuebingen-quant-society/threadhall/internal/store/sqlite"
 	"golang.org/x/term"
@@ -86,9 +87,14 @@ func serve(arguments []string) error {
 	if err != nil {
 		return fmt.Errorf("start authentication: %w", err)
 	}
+	conversationService, err := conversation.NewService(store.NewConversationStore(db, writer), time.Now)
+	if err != nil {
+		return fmt.Errorf("start conversations: %w", err)
+	}
 
 	handler := app.New(db)
 	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
+	httpapi.RegisterConversations(handler, authService, conversationService, cfg.PublicURL)
 	server := &http.Server{Addr: *address, Handler: handler}
 	log.Printf("Threadhall %s listening on %s", version, *address)
 	return server.ListenAndServe()
