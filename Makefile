@@ -8,6 +8,7 @@ test: web
 
 web:
 	npm --prefix web ci
+	npm --prefix web run typecheck
 	npm --prefix web run build
 
 build: web

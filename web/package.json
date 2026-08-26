@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "vitest"
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "preact": "10.29.8"

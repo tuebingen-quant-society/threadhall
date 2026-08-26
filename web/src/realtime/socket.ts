@@ -6,14 +6,7 @@ export interface SocketCallbacks {
 	onResync?: () => Promise<void>;
 }
 
-interface SocketLike {
-	readyState: number;
-	onopen: (() => void) | null;
-	onmessage: ((event: MessageEvent<string>) => void) | null;
-	onclose: ((event: CloseEvent) => void) | null;
-	onerror: (() => void) | null;
-	close(): void;
-}
+type SocketLike = Pick<WebSocket, "readyState" | "onopen" | "onmessage" | "onclose" | "onerror" | "close">;
 
 type SocketConstructor = new (url: string) => SocketLike;
 const MAX_RETRY_DELAY_MS = 15_000;
