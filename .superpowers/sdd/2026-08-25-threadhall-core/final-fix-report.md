@@ -169,3 +169,44 @@ Exceptional Wave production bundle: HTML 0.39 kB / 0.26 kB gzip; CSS 12.33 kB /
 3.47 kB gzip; JavaScript 48.98 kB / 16.38 kB gzip. No authored production file
 exceeds the 300-line soft limit: `use-workspace.ts` is 300 lines and `timeline.tsx`
 is 250 lines. No deferred feature or plan was touched, and nothing was pushed.
+
+### Exceptional Wave correction: pagination during recovery
+
+Correction baseline: `241b3517023d1a769669d230f6efb74f7e110633`
+
+The socket history generation alone did not invalidate a Load Earlier request started
+after overflow recovery had begun. Such a request captured the new generation, then
+could resolve after recovery cleared its patch and resurrect stale content while
+advancing the HTTP cursor.
+
+History request validity now includes a separate monotonic epoch. Selection changes
+and successful authoritative history commits advance it; initial and older requests
+must match both the socket generation and request epoch before merging or changing
+their cursor. Recovery advances the epoch synchronously before installing its page and
+cursor, so pagination started during recovery is discarded after that commit. The
+two-dimensional guard is isolated in `history-request.ts`; it is constant-space and
+does not modify the socket reconnect cursor.
+
+RED: `npm test -- --run src/chat-workspace-message-window.test.tsx` failed exactly the
+two new edit/delete cases. In each, a 201-entity overflow began delayed recovery,
+pagination began during recovery, recovery completed, and the stale page then rendered
+`stale during recovery`.
+
+GREEN: the same focused command passed all 12 tests. Both cases assert the stale entity
+never renders, the discarded page's cursor `1` is not installed (the next request still
+uses `500`), fresh authoritative pagination applies the edit/tombstone, the message
+window stays at or below 200, and no extra recovery request occurs.
+
+Correction verification:
+
+- `git diff --check`: passed.
+- `npm test -- --run`: 14 files, 67 tests passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed; 25 modules transformed.
+- `go test -race -tags sqlite_fts5 ./...`: passed across all packages.
+- `go vet -tags sqlite_fts5 ./...`: passed with no output.
+- `make check`: passed after `npm ci`, including all 67 frontend tests.
+
+Correction bundle: HTML 0.39 kB / 0.26 kB gzip; CSS 12.33 kB / 3.47 kB gzip;
+JavaScript 49.47 kB / 16.51 kB gzip. Production LOC remains within the soft limit:
+`use-workspace.ts` is 299 lines, `timeline.tsx` is 254, and `history-request.ts` is 15.

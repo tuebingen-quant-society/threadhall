@@ -128,6 +128,43 @@ describe("ChatWorkspace delayed message patches", () => {
 			expect(screen.queryByText("stale older overflow")).toBeNull();
 		});
 	}
+
+	for (const operation of ["edit", "delete"] as const) {
+		it(`discards ${operation} pagination started during overflow recovery`, async () => {
+			const recovery = deferred<{ messages: Message[]; next_before_id: number }>();
+			const older = deferred<{ messages: Message[]; next_before_id: number }>();
+			const current = changedMessage(operation, 100, "edited 100");
+			let latestCalls = 0;
+			let olderCalls = 0;
+			const history = vi.fn((_id: number, _signal: AbortSignal, before?: number) => {
+				if (before === undefined) return latestCalls++ === 0
+					? Promise.resolve({ messages: [message(500)], next_before_id: 500 }) : recovery.promise;
+				if (before === 500 && olderCalls++ === 0) return older.promise;
+				return Promise.resolve({ messages: [current], next_before_id: 100 });
+			});
+			const api = fakeApi({ history });
+			const socket = socketHarness();
+			renderWorkspace(api, socket.factory);
+			await screen.findByText("message 500");
+
+			emitPatchOverflow(socket, operation);
+			await waitFor(() => expect(history).toHaveBeenCalledTimes(2));
+			fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+			await waitFor(() => expect(history).toHaveBeenCalledTimes(3));
+			act(() => recovery.resolve({ messages: [message(501, "recovery complete")], next_before_id: 500 }));
+			await screen.findByText("recovery complete");
+
+			await act(async () => { older.resolve({ messages: [message(100, "stale during recovery")], next_before_id: 1 }); await older.promise; });
+			expect(screen.queryByText("stale during recovery")).toBeNull();
+			fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+			await waitFor(() => expect(history).toHaveBeenCalledTimes(4));
+			expect(history.mock.calls[3][2]).toBe(500);
+			if (operation === "edit") await screen.findByText("edited 100");
+			else await screen.findByText("Message deleted");
+			expect(document.querySelectorAll("[data-message-id]").length).toBeLessThanOrEqual(200);
+			expect(history).toHaveBeenCalledTimes(4);
+		});
+	}
 });
 
 describe("ChatWorkspace bounded message window", () => {

@@ -26,6 +26,10 @@ export interface PendingMessage {
 	queuedAt: string;
 }
 
+export const emptyTimeline = (): TimelineState => ({
+	messages: [], entitySeq: new Map(), entityPatches: new Map(), pinnedIds: new Set(), historyGeneration: 0, window: "latest",
+});
+
 function objectPayload(payload: unknown): Record<string, unknown> | null {
 	return typeof payload === "object" && payload !== null && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
 }
