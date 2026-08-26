@@ -36,6 +36,14 @@ func (s *MessageStore) Send(ctx context.Context, record message.SendRecord) (mes
 			result = stored
 			return nil
 		}
+		adopted, found, err := adoptLegacySend(ctx, tx, record, fingerprint)
+		if err != nil {
+			return err
+		}
+		if found {
+			result = adopted
+			return nil
+		}
 		insert, err := tx.ExecContext(ctx, `INSERT INTO messages(
 			conversation_id, author_id, body, rendered_body, idempotency_key, created_at)
 			SELECT conversation_id, ?, ?, ?, ?, ? FROM conversation_members

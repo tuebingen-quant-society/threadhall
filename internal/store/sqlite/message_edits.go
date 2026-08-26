@@ -20,6 +20,9 @@ func (s *MessageStore) Edit(ctx context.Context, record message.EditRecord) (mes
 			result = stored
 			return nil
 		}
+		if err := rejectLegacyMessageKey(ctx, tx, record.AuthorID, record.IdempotencyKey); err != nil {
+			return err
+		}
 		item, err := editableMessage(ctx, tx, record.MessageID, record.AuthorID)
 		if err != nil {
 			return err
@@ -62,6 +65,9 @@ func (s *MessageStore) Delete(ctx context.Context, record message.DeleteRecord) 
 		if found {
 			result = stored
 			return nil
+		}
+		if err := rejectLegacyMessageKey(ctx, tx, record.AuthorID, record.IdempotencyKey); err != nil {
+			return err
 		}
 		item, err := editableMessage(ctx, tx, record.MessageID, record.AuthorID)
 		if err != nil {
