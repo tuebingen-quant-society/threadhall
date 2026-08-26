@@ -77,9 +77,11 @@ describe("Timeline", () => {
 
 		expect(screen.getByText("hello").tagName).toBe("STRONG");
 		expect(screen.queryByText("**hello**")).toBeNull();
+		fireEvent.click(screen.getByLabelText("Message actions"));
 		fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
 		fireEvent.input(screen.getByLabelText("Edit message text"), { target: { value: "changed" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save edit" }));
+		fireEvent.click(screen.getByLabelText("Message actions"));
 		fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
 
 		expect(edit).toHaveBeenCalledWith(first, "changed");

@@ -52,8 +52,8 @@ export function LoginPanel({ onLogin, onRegister }: LoginPanelProps) {
 	return (
 		<main class="auth-page">
 			<section class="auth-intro" aria-labelledby="auth-title">
-				<p class="eyebrow">THREADHALL / PRIVATE WORKSPACE</p>
-				<h1 id="auth-title">Ideas move better in a quiet room.</h1>
+				<h1 id="auth-title">Threadhall</h1>
+				<p class="auth-intro-lede">Ideas move better in a quiet room.</p>
 				<p>Focused channels, direct conversation, and durable context for people building together.</p>
 			</section>
 			<section class="auth-form-wrap" aria-label={registering ? "Invite registration" : "Sign in"}>
@@ -63,7 +63,6 @@ export function LoginPanel({ onLogin, onRegister }: LoginPanelProps) {
 				</div>
 				<form onSubmit={submit}>
 					<header>
-						<p class="section-kicker">{registering ? "New member" : "Welcome back"}</p>
 						<h2>{registering ? "Join the workshop" : "Enter Threadhall"}</h2>
 					</header>
 					{registering && <label>Invite token<input value={invite} onInput={(event) => setInvite(event.currentTarget.value)} autoComplete="one-time-code" required /></label>}
@@ -95,7 +94,6 @@ export function SessionProvider({ api, children }: { api: ApiClient; children: C
 
 	if (user === undefined) return (
 		<main class="center-state" aria-live="polite">
-			<p class="eyebrow">THREADHALL</p>
 			{bootError ? <><h1>Threadhall is out of reach.</h1><p role="alert">{bootError}</p><button onClick={() => setRetry((value) => value + 1)}>Try again</button></> : <><h1>Opening the workshop…</h1><span class="loading-line" /></>}
 		</main>
 	);

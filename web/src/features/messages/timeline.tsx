@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { Message, MessageResult, RealtimeEvent } from "../../api/types";
+import { DeleteIcon, EditIcon, MoreIcon } from "./message-icons";
 
 export const MAX_CLIENT_MESSAGES = 200;
 const MAX_ENTITY_PATCHES = 200;
@@ -222,10 +223,13 @@ function MessageRow({ message, own, author, onEdit, onDelete }: {
 					<div><button class="text-button" type="button" onClick={() => setEditing(false)}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
 				</form>
 			) : <div class="message-body" dangerouslySetInnerHTML={{ __html: message.rendered_body }} />}
-			{own && !deleted && !editing && <div class="message-actions">
-				<button type="button" aria-label="Edit message" onClick={() => setEditing(true)}>Edit</button>
-				<button type="button" aria-label="Delete message" onClick={() => void onDelete(message)}>Delete</button>
-			</div>}
+			{own && !deleted && !editing && <details class="message-actions">
+				<summary aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
+				<div>
+					<button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(true)}><EditIcon /></button>
+					<button type="button" aria-label="Delete message" title="Delete" onClick={() => void onDelete(message)}><DeleteIcon /></button>
+				</div>
+			</details>}
 		</article>
 	);
 }
@@ -239,7 +243,7 @@ export function Timeline(props: TimelineProps) {
 			{props.hasOlder && <button class="load-older" type="button" onClick={props.onLoadOlder}>Load earlier messages</button>}
 			{props.loading && props.messages.length === 0 && <div class="timeline-state"><span class="loading-line" /><p>Loading conversation…</p></div>}
 			{props.error && <p class="inline-error" role="alert">{props.error}</p>}
-			{!props.loading && !props.error && props.messages.length === 0 && !props.pending?.length && <div class="timeline-state"><p class="section-kicker">No messages yet</p><h2>Begin the thread.</h2><p>Write the first note for this conversation.</p></div>}
+			{!props.loading && !props.error && props.messages.length === 0 && !props.pending?.length && <div class="timeline-state"><p class="muted">No messages yet</p><h2>Begin the thread.</h2><p>Write the first note for this conversation.</p></div>}
 			{props.messages.map((message) => <MessageRow
 				key={message.id} message={message} own={message.author_id === props.currentUserId}
 				author={props.memberNames.get(message.author_id) ?? `User ${message.author_id}`}

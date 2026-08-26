@@ -12,7 +12,6 @@ export function ConversationDetail({ conversation, members, loading, loadingMore
 }) {
 	return (
 		<div class="detail-pane-inner">
-			<p class="section-kicker">Conversation context</p>
 			{conversation ? <>
 				<h2>{conversationLabel(conversation)}</h2>
 				<p class="detail-kind">{conversation.kind === "dm" ? "Direct message" : conversation.kind === "private" ? "Private channel" : "Public channel"}</p>

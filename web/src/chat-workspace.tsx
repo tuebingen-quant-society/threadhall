@@ -25,12 +25,12 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 
 	return <WorkspaceShell selectionKey={state.selectionGeneration}
 		navigation={<>
-			<header class="brand-block"><p class="eyebrow">THREADHALL</p><h1>Workshop</h1><div><span>{user.username}</span><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
+			<header class="brand-block"><h1>Threadhall</h1><div><span>{user.username}</span><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
 			<NewConversationForm onCreate={state.createConversation} />
 			<ConversationList conversations={state.conversations} selectedId={state.selectedId} loading={state.conversationLoading} loadingMore={state.conversationLoadingMore} error={state.conversationError} hasMore={state.conversationCursor !== undefined} onLoadMore={() => void state.loadMoreConversations()} onSelect={(item) => state.select(item.id)} />
 		</>}
 		main={<div class="conversation-main">
-			<header class="conversation-header"><div><p class="section-kicker">{selected?.kind === "dm" ? "Direct message" : "Channel"}</p><h2>{selected ? title : "Select a conversation"}</h2></div><span class={`connection-status ${state.connection}`}><i />{connectionLabel(state.connection)}</span></header>
+			<header class="conversation-header"><h2>{selected ? title : "Select a conversation"}</h2><span class={`connection-status ${state.connection}`}><i />{connectionLabel(state.connection)}</span></header>
 			{state.mutationError && <p class="global-error" role="alert">{state.mutationError}</p>}
 			{selected ? <>
 				<Timeline messages={state.timeline.messages} pending={state.pending} currentUserId={user.id} memberNames={memberNames} loading={state.messageLoading} error={state.messageError} hasOlder={state.messageCursor !== undefined} onLoadOlder={() => void state.loadOlderMessages()} onEdit={state.editMessage} onDelete={state.deleteMessage} />

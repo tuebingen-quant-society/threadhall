@@ -1,6 +1,7 @@
 import { useRef, useState } from "preact/hooks";
 
 import { errorDetail } from "../../api/client";
+import { SendIcon } from "./message-icons";
 
 interface ComposerProps {
 	conversationName: string;
@@ -55,8 +56,8 @@ export function Composer({ conversationName, onSend }: ComposerProps) {
 					rows={2}
 					disabled={busy}
 				/>
-				<button class="send-button" type="button" onClick={() => void send()} disabled={busy || draft.trim() === ""} aria-label="Send message">
-					{busy ? "Sending" : "Send"}
+				<button class="send-button" type="button" onClick={() => void send()} disabled={busy || draft.trim() === ""} aria-label={busy ? "Sending message" : "Send message"} title="Send">
+					<SendIcon />
 				</button>
 			</div>
 			<p class="composer-hint">Enter to send · Shift+Enter for a new line</p>

@@ -176,10 +176,14 @@ describe("ChatWorkspace selection generations", () => {
 				fireEvent.input(composer, { target: { value: "late send" } });
 				fireEvent.keyDown(composer, { key: "Enter" });
 			} else if (operation === "edit") {
+				fireEvent.click(screen.getByLabelText("Message actions"));
 				fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
 				fireEvent.input(screen.getByLabelText("Edit message text"), { target: { value: "late edit" } });
 				fireEvent.click(screen.getByRole("button", { name: "Save edit" }));
-			} else fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+			} else {
+				fireEvent.click(screen.getByLabelText("Message actions"));
+				fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+			}
 			await waitFor(() => expect(api[`${operation}Message`]).toHaveBeenCalled());
 
 			fireEvent.click(screen.getByRole("button", { name: "research, public channel" }));
