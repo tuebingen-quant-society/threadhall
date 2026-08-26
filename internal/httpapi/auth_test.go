@@ -194,6 +194,38 @@ func TestInviteRedemptionAndLogoutUseNarrowPublicResponses(t *testing.T) {
 	}
 }
 
+func TestUserDirectoryIsAuthenticatedBoundedAndNarrow(t *testing.T) {
+	api := &fakeAuthAPI{user: auth.User{ID: 4, Username: "member", Admin: true}, directory: auth.UserDirectory{
+		Users: []auth.DirectoryUser{{ID: 7, Username: "lin"}},
+	}}
+	handler := testAuthHandler(api, false)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/users?query=Li&limit=12", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: tokenString(0x23)})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || api.findUsers.RequesterID != 4 || api.findUsers.Query != "Li" || api.findUsers.Limit != 12 {
+		t.Fatalf("directory response/call = %d / %#v; body=%s", recorder.Code, api.findUsers, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if body := recorder.Body.String(); body != "{\"users\":[{\"id\":7,\"username\":\"lin\"}]}\n" {
+		t.Fatalf("directory body = %s", body)
+	}
+
+	for _, target := range []string{
+		"/api/v1/users?unknown=1", "/api/v1/users?query=a&query=b", "/api/v1/users?limit=0",
+		"/api/v1/users?limit=51", "/api/v1/users?query=" + string(bytes.Repeat([]byte{'a'}, 65)),
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("GET %s status = %d, want 400", target, recorder.Code)
+		}
+	}
+}
+
 func testAuthHandler(api AuthAPI, secure bool) http.Handler {
 	mux := http.NewServeMux()
 	RegisterAuth(mux, api, testOrigin, secure)
@@ -258,6 +290,13 @@ type fakeAuthAPI struct {
 	revokeCalls       int
 	loginCalls        int
 	redeemCalls       int
+	directory         auth.UserDirectory
+	findUsers         auth.FindUsers
+}
+
+func (a *fakeAuthAPI) FindUsers(_ context.Context, query auth.FindUsers) (auth.UserDirectory, error) {
+	a.findUsers = query
+	return a.directory, nil
 }
 
 func (a *fakeAuthAPI) Login(context.Context, auth.Login) (auth.Session, error) {

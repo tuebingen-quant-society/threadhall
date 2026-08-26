@@ -26,7 +26,7 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 	return <WorkspaceShell selectionKey={state.selectionGeneration}
 		navigation={<>
 			<header class="brand-block"><h1>Threadhall</h1><div><span>{user.username}</span><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
-			<NewConversationForm onCreate={state.createConversation} />
+			<NewConversationForm onCreate={state.createConversation} onFindUsers={(query, signal) => api.findUsers(query, signal)} />
 			<ConversationList conversations={state.conversations} selectedId={state.selectedId} loading={state.conversationLoading} loadingMore={state.conversationLoadingMore} error={state.conversationError} hasMore={state.conversationCursor !== undefined} onLoadMore={() => void state.loadMoreConversations()} onSelect={(item) => state.select(item.id)} />
 		</>}
 		main={<div class="conversation-main">

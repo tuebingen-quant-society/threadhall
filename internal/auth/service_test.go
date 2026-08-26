@@ -195,6 +195,30 @@ func TestServiceHashesTokensForLookupAndRevocation(t *testing.T) {
 	}
 }
 
+func TestServiceFindsBoundedUsersForAuthenticatedRequester(t *testing.T) {
+	repository := &recordingRepository{directory: []DirectoryUser{{ID: 2, Username: "lin"}}}
+	service := newTestService(t, repository, bytes.Repeat([]byte{0x45}, tokenBytes))
+
+	result, err := service.FindUsers(context.Background(), FindUsers{RequesterID: 1, Query: "Li", Limit: 0})
+	if err != nil || len(result.Users) != 1 || result.Users[0].Username != "lin" {
+		t.Fatalf("FindUsers = (%#v, %v)", result, err)
+	}
+	if repository.directoryRequester != 1 || repository.directoryQuery != "Li" || repository.directoryLimit != 20 {
+		t.Fatalf("directory query = requester %d query %q limit %d", repository.directoryRequester, repository.directoryQuery, repository.directoryLimit)
+	}
+
+	for _, query := range []FindUsers{
+		{},
+		{RequesterID: 1, Query: string(bytes.Repeat([]byte{'a'}, 65))},
+		{RequesterID: 1, Query: " invalid"},
+		{RequesterID: 1, Limit: 51},
+	} {
+		if _, err := service.FindUsers(context.Background(), query); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("FindUsers(%#v) error = %v, want ErrInvalidInput", query, err)
+		}
+	}
+}
+
 var testNow = time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 
 func newTestService(t *testing.T, repository Repository, random []byte) *Service {
@@ -207,18 +231,27 @@ func newTestService(t *testing.T, repository Repository, random []byte) *Service
 }
 
 type recordingRepository struct {
-	bootstrap     BootstrapRecord
-	bootstrapErr  error
-	invite        InviteRecord
-	credential    Credential
-	credentialErr error
-	replacement   SessionRecord
-	redeem        RedeemRecord
-	redeemUser    User
-	lookupHash    [32]byte
-	lookupNow     time.Time
-	sessionUser   User
-	revokeHash    [32]byte
+	bootstrap          BootstrapRecord
+	bootstrapErr       error
+	invite             InviteRecord
+	credential         Credential
+	credentialErr      error
+	replacement        SessionRecord
+	redeem             RedeemRecord
+	redeemUser         User
+	lookupHash         [32]byte
+	lookupNow          time.Time
+	sessionUser        User
+	revokeHash         [32]byte
+	directory          []DirectoryUser
+	directoryRequester int64
+	directoryQuery     string
+	directoryLimit     int
+}
+
+func (r *recordingRepository) SearchUsers(_ context.Context, requesterID int64, query string, limit int) ([]DirectoryUser, error) {
+	r.directoryRequester, r.directoryQuery, r.directoryLimit = requesterID, query, limit
+	return r.directory, nil
 }
 
 func (r *recordingRepository) Bootstrap(_ context.Context, record BootstrapRecord) error {

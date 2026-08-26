@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/tuebingen-quant-society/threadhall/internal/auth"
@@ -166,6 +167,33 @@ func (s *AuthStore) RevokeSession(ctx context.Context, tokenHash [32]byte) error
 		_, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash[:])
 		return err
 	})
+}
+
+func (s *AuthStore) SearchUsers(ctx context.Context, requesterID int64, query string, limit int) ([]auth.DirectoryUser, error) {
+	pattern := "%" + escapeLike(query) + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, username FROM users
+		WHERE id <> ? AND username LIKE ? ESCAPE '\' COLLATE NOCASE
+		ORDER BY username COLLATE NOCASE, id LIMIT ?`, requesterID, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make([]auth.DirectoryUser, 0, limit)
+	for rows.Next() {
+		var user auth.DirectoryUser
+		if err := rows.Scan(&user.ID, &user.Username); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func escapeLike(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	return strings.ReplaceAll(value, `_`, `\_`)
 }
 
 func (s *AuthStore) write(ctx context.Context, fn WriteFunc) error {

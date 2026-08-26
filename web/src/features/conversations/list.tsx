@@ -1,7 +1,7 @@
 import type { Conversation } from "../../api/types";
 
 export function conversationLabel(conversation: Conversation) {
-	if (conversation.kind === "dm") return `Direct message ${conversation.id}`;
+	if (conversation.kind === "dm") return conversation.peer_username ?? `Direct message ${conversation.id}`;
 	return conversation.name ?? `Conversation ${conversation.id}`;
 }
 

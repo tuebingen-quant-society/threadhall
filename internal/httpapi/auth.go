@@ -25,6 +25,7 @@ type AuthAPI interface {
 	RedeemInvite(context.Context, auth.CreateUser) (auth.Session, error)
 	CreateInvite(context.Context, int64) (auth.Invite, error)
 	Authenticate(context.Context, [32]byte) (auth.User, error)
+	FindUsers(context.Context, auth.FindUsers) (auth.UserDirectory, error)
 	Revoke(context.Context, [32]byte) error
 	NewCSRFToken() (string, error)
 }
@@ -43,6 +44,7 @@ func RegisterAuth(mux *http.ServeMux, api AuthAPI, publicOrigin string, secureCo
 	mux.Handle("DELETE /api/v1/session", disableAuthCaching(requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.logout)))))
 	mux.Handle("POST /api/v1/invites", disableAuthCaching(requireMutationSecurity(publicOrigin, RequireSession(api, http.HandlerFunc(handler.createInvite)))))
 	mux.Handle("POST /api/v1/users", disableAuthCaching(requireMutationSecurity(publicOrigin, http.HandlerFunc(handler.redeemInvite))))
+	mux.Handle("GET /api/v1/users", disableAuthCaching(requireUserDirectoryTarget(RequireSession(api, http.HandlerFunc(handler.findUsers)))))
 }
 
 func (h *authHandler) getSession(w http.ResponseWriter, request *http.Request) {

@@ -13,6 +13,24 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// DirectoryUser is the deliberately narrow identity exposed for member discovery.
+type DirectoryUser struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+}
+
+// UserDirectory is a bounded alphabetical discovery result.
+type UserDirectory struct {
+	Users []DirectoryUser `json:"users"`
+}
+
+// FindUsers searches workspace members without exposing account metadata.
+type FindUsers struct {
+	RequesterID int64
+	Query       string
+	Limit       int
+}
+
 // Bootstrap is the one-time first-administrator command.
 type Bootstrap struct {
 	Username string

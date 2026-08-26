@@ -16,6 +16,8 @@ import (
 const (
 	inviteLifetime   = 24 * time.Hour
 	sessionLifetime  = 30 * 24 * time.Hour
+	defaultUserLimit = 20
+	maxUserLimit     = 50
 	maxUsernameBytes = 64
 	minPasswordBytes = 12
 	maxPasswordBytes = 128
@@ -124,6 +126,22 @@ func (s *Service) Authenticate(ctx context.Context, raw [32]byte) (User, error) 
 
 func (s *Service) Revoke(ctx context.Context, raw [32]byte) error {
 	return s.repository.RevokeSession(ctx, sha256.Sum256(raw[:]))
+}
+
+// FindUsers returns a bounded public identity projection for an authenticated human.
+func (s *Service) FindUsers(ctx context.Context, command FindUsers) (UserDirectory, error) {
+	if command.RequesterID <= 0 || len(command.Query) > maxUsernameBytes || !utf8.ValidString(command.Query) ||
+		strings.TrimSpace(command.Query) != command.Query || command.Limit < 0 || command.Limit > maxUserLimit {
+		return UserDirectory{}, ErrInvalidInput
+	}
+	if command.Limit == 0 {
+		command.Limit = defaultUserLimit
+	}
+	users, err := s.repository.SearchUsers(ctx, command.RequesterID, command.Query, command.Limit)
+	if err != nil {
+		return UserDirectory{}, err
+	}
+	return UserDirectory{Users: users}, nil
 }
 
 func (s *Service) NewCSRFToken() (string, error) {

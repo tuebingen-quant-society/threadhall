@@ -19,11 +19,12 @@ const (
 
 // Conversation is a membership-scoped channel or one-to-one direct message.
 type Conversation struct {
-	ID        int64     `json:"id"`
-	Kind      Kind      `json:"kind"`
-	Name      string    `json:"name,omitempty"`
-	CreatedBy int64     `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           int64     `json:"id"`
+	Kind         Kind      `json:"kind"`
+	Name         string    `json:"name,omitempty"`
+	PeerUsername string    `json:"peer_username,omitempty"`
+	CreatedBy    int64     `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // CreateChannel creates a public or private named channel.

@@ -205,6 +205,33 @@ func TestAuthStoreMapsSaturatedWriterToDomainBusy(t *testing.T) {
 	}
 }
 
+func TestAuthStoreSearchesUsersAlphabeticallyAndExcludesRequester(t *testing.T) {
+	store, _ := newTestAuthStore(t)
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	bootstrapTestAdmin(t, store, now)
+	for _, username := range []string{"zara", "Alice", "al_bert", "wild%card"} {
+		if err := store.writer.Do(context.Background(), func(tx *sql.Tx) error {
+			_, err := tx.Exec(`INSERT INTO users(username, password_hash, is_admin, created_at) VALUES (?, 'hash', 0, ?)`, username, now.Unix())
+			return err
+		}); err != nil {
+			t.Fatalf("seed %s: %v", username, err)
+		}
+	}
+
+	users, err := store.SearchUsers(context.Background(), 1, "al", 20)
+	if err != nil || len(users) != 2 || users[0].Username != "al_bert" || users[1].Username != "Alice" {
+		t.Fatalf("SearchUsers(al) = (%#v, %v)", users, err)
+	}
+	literal, err := store.SearchUsers(context.Background(), 1, "%", 20)
+	if err != nil || len(literal) != 1 || literal[0].Username != "wild%card" {
+		t.Fatalf("SearchUsers(%%) = (%#v, %v)", literal, err)
+	}
+	all, err := store.SearchUsers(context.Background(), 2, "", 2)
+	if err != nil || len(all) != 2 || all[0].Username != "admin" || all[1].Username != "al_bert" {
+		t.Fatalf("SearchUsers(empty) = (%#v, %v)", all, err)
+	}
+}
+
 func newTestAuthStore(t *testing.T) (*AuthStore, *sql.DB) {
 	t.Helper()
 	db := openTestDB(t)

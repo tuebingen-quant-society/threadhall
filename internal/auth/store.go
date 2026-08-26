@@ -55,6 +55,7 @@ type Repository interface {
 	Credential(context.Context, string) (Credential, error)
 	ReplaceUserSessions(context.Context, SessionRecord) error
 	RedeemInvite(context.Context, RedeemRecord) (User, error)
+	SearchUsers(context.Context, int64, string, int) ([]DirectoryUser, error)
 	SessionUser(context.Context, [32]byte, time.Time) (User, error)
 	RevokeSession(context.Context, [32]byte) error
 }

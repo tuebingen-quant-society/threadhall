@@ -73,6 +73,14 @@ describe("ApiClient", () => {
 		expect(fetcher.mock.calls[1][0]).toBe("/api/v1/conversations/7/members?limit=100&before_id=40");
 	});
 
+	it("searches the bounded member directory with encoded usernames", async () => {
+		const fetcher = vi.fn().mockResolvedValue(response({ users: [{ id: 2, username: "lin" }] }));
+		const api = new ApiClient(fetcher);
+
+		await expect(api.findUsers("lin & team")).resolves.toEqual({ users: [{ id: 2, username: "lin" }] });
+		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/users?query=lin%20%26%20team&limit=20");
+	});
+
 	it("invokes the fetch implementation without an ApiClient receiver", async () => {
 		const receivers: unknown[] = [];
 		const fetcher = function (this: unknown) {

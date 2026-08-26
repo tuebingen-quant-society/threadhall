@@ -7,6 +7,7 @@ import type {
 	MessageResult,
 	ProblemShape,
 	Session,
+	UserDirectory,
 } from "./types";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -82,6 +83,9 @@ export class ApiClient {
 		}, signal);
 	}
 	logout(signal?: AbortSignal) { return this.request<void>("/session", { method: "DELETE" }, signal); }
+	findUsers(query: string, signal?: AbortSignal) {
+		return this.request<UserDirectory>(`/users?query=${encodeURIComponent(query)}&limit=20`, {}, signal);
+	}
 
 	listConversations(signal?: AbortSignal, beforeId?: number) {
 		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;

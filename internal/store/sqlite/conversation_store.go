@@ -21,18 +21,20 @@ func NewConversationStore(db *sql.DB, writer *Writer) *ConversationStore {
 
 func (s *ConversationStore) List(ctx context.Context, userID, beforeID int64, limit int) (conversation.ConversationPage, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.kind, c.name, c.created_by, c.created_at
+		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username
 		FROM conversations c
 		JOIN conversation_members member ON member.conversation_id = c.id
+		LEFT JOIN users peer ON c.kind = 'dm' AND peer.id = CASE
+			WHEN c.dm_user_low = ? THEN c.dm_user_high ELSE c.dm_user_low END
 		WHERE member.user_id = ? AND (? = 0 OR c.id < ?)
-		ORDER BY c.id DESC LIMIT ?`, userID, beforeID, beforeID, limit+1)
+		ORDER BY c.id DESC LIMIT ?`, userID, userID, beforeID, beforeID, limit+1)
 	if err != nil {
 		return conversation.ConversationPage{}, err
 	}
 	defer rows.Close()
 	page := conversation.ConversationPage{Conversations: make([]conversation.Conversation, 0, limit)}
 	for rows.Next() {
-		item, err := scanConversation(rows)
+		item, err := scanUserConversation(rows)
 		if err != nil {
 			return conversation.ConversationPage{}, err
 		}
@@ -50,11 +52,13 @@ func (s *ConversationStore) List(ctx context.Context, userID, beforeID int64, li
 
 func (s *ConversationStore) Detail(ctx context.Context, userID, conversationID int64) (conversation.Conversation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT c.id, c.kind, c.name, c.created_by, c.created_at
+		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username
 		FROM conversations c
 		JOIN conversation_members member ON member.conversation_id = c.id
-		WHERE c.id = ? AND member.user_id = ?`, conversationID, userID)
-	item, err := scanConversation(row)
+		LEFT JOIN users peer ON c.kind = 'dm' AND peer.id = CASE
+			WHEN c.dm_user_low = ? THEN c.dm_user_high ELSE c.dm_user_low END
+		WHERE c.id = ? AND member.user_id = ?`, userID, conversationID, userID)
+	item, err := scanUserConversation(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return conversation.Conversation{}, conversation.ErrNotFound
 	}
@@ -123,6 +127,19 @@ func scanConversation(row rowScanner) (conversation.Conversation, error) {
 		return conversation.Conversation{}, err
 	}
 	item.Name = name.String
+	item.CreatedAt = time.Unix(createdAt, 0).UTC()
+	return item, nil
+}
+
+func scanUserConversation(row rowScanner) (conversation.Conversation, error) {
+	var item conversation.Conversation
+	var name, peer sql.NullString
+	var createdAt int64
+	err := row.Scan(&item.ID, &item.Kind, &name, &item.CreatedBy, &createdAt, &peer)
+	if err != nil {
+		return conversation.Conversation{}, err
+	}
+	item.Name, item.PeerUsername = name.String, peer.String
 	item.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return item, nil
 }

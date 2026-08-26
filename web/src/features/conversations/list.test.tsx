@@ -5,7 +5,7 @@ import { ConversationList } from "./list";
 
 const conversations = [
 	{ id: 2, kind: "channel" as const, name: "general", created_by: 1, created_at: "2026-08-25T12:00:00Z" },
-	{ id: 1, kind: "dm" as const, created_by: 1, created_at: "2026-08-25T11:00:00Z" },
+	{ id: 1, kind: "dm" as const, peer_username: "lin", created_by: 1, created_at: "2026-08-25T11:00:00Z" },
 ];
 
 describe("ConversationList", () => {
@@ -15,7 +15,7 @@ describe("ConversationList", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "general, public channel" }));
 		expect(select).toHaveBeenCalledWith(conversations[0]);
-		expect(screen.getByRole("button", { name: "Direct message 1" }).getAttribute("aria-current")).toBe("page");
+		expect(screen.getByRole("button", { name: "lin" }).getAttribute("aria-current")).toBe("page");
 	});
 
 	it("exposes accessible conversation pagination", () => {

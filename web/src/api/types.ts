@@ -7,6 +7,15 @@ export interface User {
 	created_at: string;
 }
 
+export interface DirectoryUser {
+	id: number;
+	username: string;
+}
+
+export interface UserDirectory {
+	users: DirectoryUser[];
+}
+
 export interface Session {
 	user: User;
 	expires_at: string;
@@ -16,6 +25,7 @@ export interface Conversation {
 	id: number;
 	kind: ConversationKind;
 	name?: string;
+	peer_username?: string;
 	created_by: number;
 	created_at: string;
 }

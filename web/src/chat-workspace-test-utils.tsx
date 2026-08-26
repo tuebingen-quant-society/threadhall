@@ -23,6 +23,7 @@ export function fakeApi(overrides: Record<string, unknown> = {}) {
 	return {
 		getSession: vi.fn().mockResolvedValue({ user, expires_at: "2026-09-25T10:00:00Z" }),
 		logout: vi.fn().mockResolvedValue(undefined),
+		findUsers: vi.fn().mockResolvedValue({ users: [] }),
 		listConversations: vi.fn().mockResolvedValue({ conversations: [general, research] }),
 		conversation: vi.fn((id: number) => Promise.resolve(id === 2 ? general : research)),
 		members: vi.fn().mockResolvedValue({ members: [{ user_id: 1, username: "ada", joined_at: user.created_at }] }),

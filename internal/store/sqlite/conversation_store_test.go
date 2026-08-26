@@ -140,6 +140,14 @@ func TestConversationStoreCanonicalizesOneDirectMessageWithExactlyTwoExistingMem
 	if err != nil || len(members.Members) != 2 || members.Members[0].UserID != 2 || members.Members[1].UserID != 1 {
 		t.Fatalf("DM members = (%#v, %v)", members, err)
 	}
+	adminPage, err := store.List(context.Background(), 1, 0, 10)
+	if err != nil || adminPage.Conversations[0].PeerUsername != "member" {
+		t.Fatalf("admin DM label = (%#v, %v)", adminPage, err)
+	}
+	memberDetail, err := store.Detail(context.Background(), 2, first.ID)
+	if err != nil || memberDetail.PeerUsername != "admin" {
+		t.Fatalf("member DM label = (%#v, %v)", memberDetail, err)
+	}
 	if _, err := store.CreateDM(context.Background(), conversation.DMRecord{
 		RequesterID: 1, OtherUserID: 3, UserLowID: 1, UserHighID: 3,
 		IdempotencyKey: "dm-from-one", CreatedAt: now,

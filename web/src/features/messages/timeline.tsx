@@ -199,18 +199,39 @@ function MessageRow({ message, own, author, onEdit, onDelete }: {
 }) {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(message.body);
+	const row = useRef<HTMLElement>(null);
+	const actionTrigger = useRef<HTMLElement>(null);
+	const editField = useRef<HTMLTextAreaElement>(null);
+	const restoreActions = useRef(false);
 	const deleted = Boolean(message.deleted_at);
 	const time = new Date(message.created_at);
+	useEffect(() => {
+		if (editing) editField.current?.focus();
+		else if (restoreActions.current) {
+			restoreActions.current = false;
+			actionTrigger.current?.focus();
+		}
+	}, [editing]);
+
+	function stopEditing() {
+		restoreActions.current = true;
+		setEditing(false);
+	}
 
 	function save(event: Event) {
 		event.preventDefault();
 		if (draft.trim() === "") return;
 		void onEdit(message, draft);
-		setEditing(false);
+		stopEditing();
+	}
+
+	async function remove() {
+		await onDelete(message);
+		row.current?.focus();
 	}
 
 	return (
-		<article class="message-row" data-message-id={message.id}>
+		<article ref={row} class="message-row" data-message-id={message.id} tabIndex={-1}>
 			<header>
 				<strong>{author}</strong>
 				<time dateTime={message.created_at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
@@ -219,15 +240,15 @@ function MessageRow({ message, own, author, onEdit, onDelete }: {
 			{deleted ? <p class="tombstone">Message deleted</p> : editing ? (
 				<form class="edit-form" onSubmit={save}>
 					<label class="sr-only" for={`edit-${message.id}`}>Edit message text</label>
-					<textarea id={`edit-${message.id}`} value={draft} onInput={(event) => setDraft(event.currentTarget.value)} maxLength={16_384} />
-					<div><button class="text-button" type="button" onClick={() => setEditing(false)}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
+					<textarea ref={editField} id={`edit-${message.id}`} value={draft} onInput={(event) => setDraft(event.currentTarget.value)} maxLength={16_384} />
+					<div><button class="text-button" type="button" onClick={stopEditing}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
 				</form>
 			) : <div class="message-body" dangerouslySetInnerHTML={{ __html: message.rendered_body }} />}
 			{own && !deleted && !editing && <details class="message-actions">
-				<summary aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
+				<summary ref={actionTrigger} aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
 				<div>
 					<button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(true)}><EditIcon /></button>
-					<button type="button" aria-label="Delete message" title="Delete" onClick={() => void onDelete(message)}><DeleteIcon /></button>
+					<button type="button" aria-label="Delete message" title="Delete" onClick={() => void remove()}><DeleteIcon /></button>
 				</div>
 			</details>}
 		</article>

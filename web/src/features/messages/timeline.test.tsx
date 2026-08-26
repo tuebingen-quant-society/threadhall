@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Message, RealtimeEvent } from "../../api/types";
@@ -86,5 +86,20 @@ describe("Timeline", () => {
 
 		expect(edit).toHaveBeenCalledWith(first, "changed");
 		expect(remove).toHaveBeenCalledWith(first);
+	});
+
+	it("moves focus into editing and restores a predictable destination", async () => {
+		const remove = vi.fn().mockResolvedValue(undefined);
+		render(<Timeline messages={[first]} currentUserId={4} memberNames={new Map([[4, "ada"]])} onEdit={vi.fn()} onDelete={remove} />);
+
+		fireEvent.click(screen.getByLabelText("Message actions"));
+		fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Edit message text")));
+		fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message actions")));
+
+		fireEvent.click(screen.getByLabelText("Message actions"));
+		fireEvent.click(screen.getByRole("button", { name: "Delete message" }));
+		await waitFor(() => expect(document.activeElement).toBe(document.querySelector("[data-message-id='2']")));
 	});
 });
