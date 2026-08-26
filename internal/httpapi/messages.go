@@ -16,6 +16,8 @@ type MessageAPI interface {
 	History(context.Context, message.History) (message.Page, error)
 	Thread(context.Context, message.Thread) (message.ThreadPage, error)
 	Threads(context.Context, message.ListThreads) (message.ThreadList, error)
+	MarkThreadRead(context.Context, message.MarkThreadRead) error
+	DeleteThread(context.Context, message.DeleteThread) error
 }
 
 type messageHandler struct {
@@ -43,8 +45,40 @@ func RegisterMessages(
 	mux.Handle("POST /api/v1/conversations/{conversation_id}/messages", mutation(preflightMessageSend, handler.send))
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/threads/{root_message_id}", read(preflightMessageThread, handler.thread))
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/threads", read(preflightMessageThreadList, handler.threads))
+	mux.Handle("PUT /api/v1/conversations/{conversation_id}/threads/{root_message_id}/read", mutation(preflightMessageThreadMutation, handler.markThreadRead))
+	mux.Handle("DELETE /api/v1/conversations/{conversation_id}/threads/{root_message_id}", mutation(preflightMessageThreadMutation, handler.deleteThread))
 	mux.Handle("PATCH /api/v1/messages/{message_id}", mutation(preflightMessageEdit, handler.edit))
 	mux.Handle("DELETE /api/v1/messages/{message_id}", mutation(preflightMessageDelete, handler.delete))
+}
+
+func (h *messageHandler) markThreadRead(w http.ResponseWriter, request *http.Request) {
+	prepared, ok := preparedMessageFromContext(request.Context())
+	if !ok {
+		writeInternalProblem(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	err := h.api.MarkThreadRead(request.Context(), message.MarkThreadRead{UserID: user.ID, ConversationID: prepared.conversationID, RootMessageID: prepared.rootMessageID})
+	if writeMessageProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(0)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *messageHandler) deleteThread(w http.ResponseWriter, request *http.Request) {
+	prepared, ok := preparedMessageFromContext(request.Context())
+	if !ok {
+		writeInternalProblem(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	err := h.api.DeleteThread(request.Context(), message.DeleteThread{ActorID: user.ID, ConversationID: prepared.conversationID, RootMessageID: prepared.rootMessageID})
+	if writeMessageProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(0)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *messageHandler) send(w http.ResponseWriter, request *http.Request) {
@@ -162,6 +196,8 @@ func writeMessageProblem(w http.ResponseWriter, err error) bool {
 		problem = Problem{Status: 404, Code: "not_found", Detail: "resource was not found"}
 	case errors.Is(err, message.ErrConflict):
 		problem = Problem{Status: 409, Code: "idempotency_conflict", Detail: "request conflicts with an earlier operation"}
+	case errors.Is(err, message.ErrForbidden):
+		problem = Problem{Status: 403, Code: "forbidden", Detail: "you are not allowed to perform this action"}
 	case errors.Is(err, message.ErrBusy):
 		problem = Problem{Status: 503, Code: "temporarily_unavailable", Detail: "service is temporarily unavailable"}
 	}

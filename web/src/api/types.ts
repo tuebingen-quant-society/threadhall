@@ -28,6 +28,7 @@ export interface Conversation {
 	peer_username?: string;
 	created_by: number;
 	created_at: string;
+	unread_count?: number;
 }
 
 export interface Member {
@@ -94,6 +95,7 @@ export interface ThreadPage {
 export interface ThreadSummary {
 	root: Message;
 	reply_count: number;
+	unread_count?: number;
 }
 
 export interface ThreadList {

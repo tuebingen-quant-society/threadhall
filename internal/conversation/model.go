@@ -25,6 +25,7 @@ type Conversation struct {
 	PeerUsername string    `json:"peer_username,omitempty"`
 	CreatedBy    int64     `json:"created_by"`
 	CreatedAt    time.Time `json:"created_at"`
+	UnreadCount  int       `json:"unread_count"`
 }
 
 // CreateChannel creates a public or private named channel.
@@ -32,7 +33,18 @@ type CreateChannel struct {
 	CreatorID      int64
 	Kind           Kind
 	Name           string
+	MemberIDs      []int64
 	IdempotencyKey string
+}
+
+// DeleteConversation removes a named channel for its owner or an administrator.
+type DeleteConversation struct {
+	ActorID, ConversationID int64
+}
+
+// MarkRead advances the caller's main-channel read position.
+type MarkRead struct {
+	UserID, ConversationID int64
 }
 
 // CreateDM creates or returns the canonical direct message for two users.

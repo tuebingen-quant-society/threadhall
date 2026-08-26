@@ -128,6 +128,28 @@ func (s *Service) Revoke(ctx context.Context, raw [32]byte) error {
 	return s.repository.RevokeSession(ctx, sha256.Sum256(raw[:]))
 }
 
+func (s *Service) SetAvatar(ctx context.Context, userID int64, mime string, data []byte) error {
+	if userID <= 0 || len(data) == 0 || len(data) > MaxAvatarBytes || (mime != "image/png" && mime != "image/jpeg" && mime != "image/webp") {
+		return ErrInvalidInput
+	}
+	owned := append([]byte(nil), data...)
+	return s.repository.SetAvatar(ctx, userID, Avatar{MIME: mime, Data: owned, UpdatedAt: s.now().UTC()})
+}
+
+func (s *Service) DeleteAvatar(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return ErrInvalidInput
+	}
+	return s.repository.DeleteAvatar(ctx, userID)
+}
+
+func (s *Service) Avatar(ctx context.Context, requesterID, userID int64) (Avatar, error) {
+	if requesterID <= 0 || userID <= 0 {
+		return Avatar{}, ErrInvalidInput
+	}
+	return s.repository.Avatar(ctx, requesterID, userID)
+}
+
 // FindUsers returns a bounded public identity projection for an authenticated human.
 func (s *Service) FindUsers(ctx context.Context, command FindUsers) (UserDirectory, error) {
 	if command.RequesterID <= 0 || len(command.Query) > maxUsernameBytes || !utf8.ValidString(command.Query) ||

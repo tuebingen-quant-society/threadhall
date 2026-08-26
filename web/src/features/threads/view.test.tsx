@@ -9,6 +9,22 @@ const root: Message = { id: 7, conversation_id: 3, author_id: 1, body: "root", r
 const reply: Message = { id: 8, conversation_id: 3, author_id: 2, thread_root_id: 7, body: "reply", rendered_body: "<p>reply</p>", created_at: "2026-08-26T10:01:00Z" };
 
 describe("ThreadView", () => {
+	it("marks an opened thread read and confirms whole-thread deletion", async () => {
+		vi.spyOn(window, "confirm").mockReturnValue(true);
+		const api = {
+			thread: vi.fn().mockResolvedValue({ root, replies: [reply] }),
+			markThreadRead: vi.fn().mockResolvedValue(undefined),
+			deleteThread: vi.fn().mockResolvedValue(undefined),
+		} as unknown as ApiClient;
+		const onDeleted = vi.fn();
+		render(<ThreadView api={api} conversationId={3} root={root} currentUserId={1} memberNames={new Map([[1, "ada"]])}
+			members={[]} capabilities={[]} revision={0} onFork={vi.fn()} canDelete onDeleted={onDeleted} onRead={vi.fn()} />);
+
+		await waitFor(() => expect(api.markThreadRead).toHaveBeenCalledWith(3, 7, expect.any(AbortSignal)));
+		fireEvent.click(screen.getByRole("button", { name: "Delete thread" }));
+		await waitFor(() => expect(api.deleteThread).toHaveBeenCalledWith(3, 7));
+		expect(onDeleted).toHaveBeenCalledTimes(1);
+	});
 	it("answers an agent question as a linked thread reply", async () => {
 		const questionRoot: Message = { ...root, questions: [{
 			id: "scope", header: "Scope", question: "Which scope?", is_other: false,
@@ -16,6 +32,7 @@ describe("ThreadView", () => {
 		}] };
 		const api = {
 			thread: vi.fn().mockResolvedValue({ root: questionRoot, replies: [] }),
+			markThreadRead: vi.fn().mockResolvedValue(undefined),
 			sendThreadReply: vi.fn().mockResolvedValue({ message: reply, event: { seq: 4 } }),
 		} as unknown as ApiClient;
 		render(<ThreadView api={api} conversationId={3} root={questionRoot} currentUserId={2} memberNames={new Map([[1, "codex"]])}
@@ -29,6 +46,7 @@ describe("ThreadView", () => {
 	it("loads replies, sends in the main thread stream, and creates a channel fork", async () => {
 		const api = {
 			thread: vi.fn().mockResolvedValue({ root, replies: [reply] }),
+			markThreadRead: vi.fn().mockResolvedValue(undefined),
 			sendThreadReply: vi.fn().mockResolvedValue({ message: { ...reply, id: 9, body: "new reply", rendered_body: "<p>new reply</p>" }, event: { seq: 4 } }),
 		} as unknown as ApiClient;
 		const onFork = vi.fn().mockResolvedValue(undefined);

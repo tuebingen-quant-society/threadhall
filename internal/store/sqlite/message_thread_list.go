@@ -11,12 +11,14 @@ import (
 func (s *MessageStore) Threads(ctx context.Context, query message.ListThreads) (message.ThreadList, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT root.id, root.conversation_id, root.author_id,
 		root.thread_root_id, root.reference_message_id, root.body, root.rendered_body, root.created_at, root.edited_at, root.deleted_at,
-		count(reply.id)
+		count(reply.id), count(CASE WHEN reply.author_id != ? AND reply.id > COALESCE(
+			(SELECT last_read_message_id FROM thread_reads WHERE user_id = ? AND root_message_id = root.id), 0)
+			THEN 1 END)
 		FROM messages root
 		JOIN conversation_members member ON member.conversation_id = root.conversation_id AND member.user_id = ?
 		JOIN messages reply ON reply.thread_root_id = root.id
 		WHERE root.conversation_id = ? AND root.reply_to_id IS NULL AND root.thread_root_id IS NULL
-		GROUP BY root.id ORDER BY max(reply.id) DESC LIMIT ?`, query.UserID, query.ConversationID, query.Limit)
+		GROUP BY root.id ORDER BY max(reply.id) DESC LIMIT ?`, query.UserID, query.UserID, query.UserID, query.ConversationID, query.Limit)
 	if err != nil {
 		return message.ThreadList{}, err
 	}
@@ -28,7 +30,7 @@ func (s *MessageStore) Threads(ctx context.Context, query message.ListThreads) (
 		var createdAt int64
 		if err := rows.Scan(&summary.Root.ID, &summary.Root.ConversationID, &summary.Root.AuthorID,
 			&threadRoot, &replyTo, &summary.Root.Body, &summary.Root.RenderedBody, &createdAt, &editedAt, &deletedAt,
-			&summary.ReplyCount); err != nil {
+			&summary.ReplyCount, &summary.UnreadCount); err != nil {
 			return message.ThreadList{}, err
 		}
 		summary.Root.CreatedAt = time.Unix(createdAt, 0).UTC()

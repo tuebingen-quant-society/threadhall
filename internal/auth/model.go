@@ -3,6 +3,8 @@ package auth
 
 import "time"
 
+const MaxAvatarBytes = 256 << 10
+
 const tokenBytes = 32
 
 // User is the authenticated human identity exposed to other domains.
@@ -22,6 +24,13 @@ type DirectoryUser struct {
 // UserDirectory is a bounded alphabetical discovery result.
 type UserDirectory struct {
 	Users []DirectoryUser `json:"users"`
+}
+
+// Avatar is a bounded raster profile image.
+type Avatar struct {
+	MIME      string
+	Data      []byte
+	UpdatedAt time.Time
 }
 
 // FindUsers searches workspace members without exposing account metadata.

@@ -21,13 +21,17 @@ func NewConversationStore(db *sql.DB, writer *Writer) *ConversationStore {
 
 func (s *ConversationStore) List(ctx context.Context, userID, beforeID int64, limit int) (conversation.ConversationPage, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username
+		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username,
+			(SELECT count(*) FROM messages unread
+			 WHERE unread.conversation_id = c.id AND unread.thread_root_id IS NULL
+			 AND unread.author_id != ? AND unread.id > COALESCE((SELECT last_read_message_id FROM conversation_reads
+				WHERE user_id = ? AND conversation_id = c.id), 0) AND unread.created_at >= member.joined_at)
 		FROM conversations c
 		JOIN conversation_members member ON member.conversation_id = c.id
 		LEFT JOIN users peer ON c.kind = 'dm' AND peer.id = CASE
 			WHEN c.dm_user_low = ? THEN c.dm_user_high ELSE c.dm_user_low END
 		WHERE member.user_id = ? AND (? = 0 OR c.id < ?)
-		ORDER BY c.id DESC LIMIT ?`, userID, userID, beforeID, beforeID, limit+1)
+		ORDER BY c.id DESC LIMIT ?`, userID, userID, userID, userID, beforeID, beforeID, limit+1)
 	if err != nil {
 		return conversation.ConversationPage{}, err
 	}
@@ -52,12 +56,16 @@ func (s *ConversationStore) List(ctx context.Context, userID, beforeID int64, li
 
 func (s *ConversationStore) Detail(ctx context.Context, userID, conversationID int64) (conversation.Conversation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username
+		SELECT c.id, c.kind, c.name, c.created_by, c.created_at, peer.username,
+			(SELECT count(*) FROM messages unread
+			 WHERE unread.conversation_id = c.id AND unread.thread_root_id IS NULL
+			 AND unread.author_id != ? AND unread.id > COALESCE((SELECT last_read_message_id FROM conversation_reads
+				WHERE user_id = ? AND conversation_id = c.id), 0) AND unread.created_at >= member.joined_at)
 		FROM conversations c
 		JOIN conversation_members member ON member.conversation_id = c.id
 		LEFT JOIN users peer ON c.kind = 'dm' AND peer.id = CASE
 			WHEN c.dm_user_low = ? THEN c.dm_user_high ELSE c.dm_user_low END
-		WHERE c.id = ? AND member.user_id = ?`, userID, conversationID, userID)
+		WHERE c.id = ? AND member.user_id = ?`, userID, userID, userID, conversationID, userID)
 	item, err := scanUserConversation(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return conversation.Conversation{}, conversation.ErrNotFound
@@ -135,7 +143,7 @@ func scanUserConversation(row rowScanner) (conversation.Conversation, error) {
 	var item conversation.Conversation
 	var name, peer sql.NullString
 	var createdAt int64
-	err := row.Scan(&item.ID, &item.Kind, &name, &item.CreatedBy, &createdAt, &peer)
+	err := row.Scan(&item.ID, &item.Kind, &name, &item.CreatedBy, &createdAt, &peer, &item.UnreadCount)
 	if err != nil {
 		return conversation.Conversation{}, err
 	}

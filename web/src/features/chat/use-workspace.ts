@@ -4,13 +4,13 @@ import { ApiClient, ApiProblem, errorDetail } from "../../api/client";
 import type { ConnectionState, Conversation, Member, Message } from "../../api/types";
 import { RealtimeSocket, type SocketCallbacks } from "../../realtime/socket";
 import { appendConversationPage, appendMemberPage } from "../conversations/collection";
-import type { ConversationDraft } from "../conversations/create";
 import { applyRealtimeEvent, emptyTimeline, mergeHistoryPage, mergeMessageResult, mergeOlderHistoryPage, type PendingMessage, queuePending, reconcilePending, recoverHistoryPage, type TimelineState } from "../messages/timeline";
 import { HistoryRequestGuard, invalidatedHistory } from "./history-request";
 import { createInvalidationCoalescer, type InvalidationCoalescer } from "./invalidation";
 import { ListCoordinator, isAbortError, staleRequest } from "./list-coordinator";
 import { loadConversationPages, loadMemberPages } from "./load-pages";
 import { eventThreadRoot } from "../threads/events";
+import { conversationActions } from "./conversation-actions";
 
 export interface WorkspaceSocket { start(): void; stop(): void }
 export type WorkspaceSocketFactory = (callbacks: SocketCallbacks) => WorkspaceSocket;
@@ -85,6 +85,10 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	const replaceConversations = useCallback((items: Conversation[], cursor?: number) => {
 		conversationsRef.current = items; setConversations(items); setConversationCursor(cursor);
 	}, []);
+	const clearUnread = useCallback((id: number) => {
+		const items = conversationsRef.current.map((item) => item.id === id ? { ...item, unread_count: 0 } : item);
+		conversationsRef.current = items; setConversations(items);
+	}, []);
 
 	useEffect(() => {
 		const initial = { ...scopeRef.current };
@@ -111,11 +115,12 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 				const result = appendMemberPage([], memberPage);
 				setDetail(item); membersRef.current = result.items; setMembers(result.items); setMemberCursor(result.nextBeforeId);
 				setTimeline((state) => mergeHistoryPage(state, messagePage.messages, request.generation)); setMessageCursor(messagePage.next_before_id); historyReady.current = true;
+				void api.markConversationRead(scope.id, controller.signal).then(() => { if (scopeCurrent(scope, controller)) clearUnread(scope.id); }).catch((cause) => { if (scopeCurrent(scope, controller) && !isAbortError(cause)) setMutationError(errorDetail(cause)); });
 			}).catch((error) => {
 				if (scopeCurrent(scope, controller) && !isAbortError(error)) { const text = errorDetail(error); setDetailError(text); setMessageError(text); }
 			}).finally(() => { if (scopeCurrent(scope, controller)) setMessageLoading(false); });
 		return () => controller.abort();
-	}, [api, scopeCurrent, selectedId, selectionGeneration]);
+	}, [api, clearUnread, scopeCurrent, selectedId, selectionGeneration]);
 
 	function captureData() {
 		const scope = { ...scopeRef.current };
@@ -205,16 +210,8 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		} finally { mutationControllers.current.delete(action.controller); }
 	}
 
-	async function createConversation(draft: ConversationDraft) {
-		setMutationError("");
-		const created = draft.kind === "dm" ? await api.createDM(draft.otherUserId, mutationKey("dm"))
-			: await api.createChannel(draft.kind, draft.name, mutationKey("channel"));
-		await lists.current.refresh(async (ticket) => {
-			const result = await loadConversationPages(api, Math.max(100, conversationsRef.current.length), ticket.controller.signal);
-			if (ticket.controller.signal.aborted) throw staleRequest();
-			replaceConversations(result.items, result.nextBeforeId); select(created.id);
-		});
-	}
+	const conversationMutations = conversationActions(api, lists.current, () => conversationsRef.current,
+		replaceConversations, select, () => conversationCursor, setMutationError);
 
 	const refreshSelected = useCallback(async (scope: SelectedScope, controller: AbortController, history: boolean, generation: number) => {
 		const [item, memberResult] = await Promise.all([
@@ -295,6 +292,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		memberLoadingMore, conversationError, detailError, messageError, mutationError, connection, threadRevision,
 		select, loadMoreConversations, loadMoreMembers, loadOlderMessages, sendMessage,
 		editMessage: (message: Message, body: string) => changeMessage("edit", message, body),
-		deleteMessage: (message: Message) => changeMessage("delete", message), createConversation, setMutationError,
+		deleteMessage: (message: Message) => changeMessage("delete", message), createConversation: conversationMutations.create,
+		deleteConversation: () => conversationMutations.remove(scopeRef.current.id), setMutationError,
 	};
 }

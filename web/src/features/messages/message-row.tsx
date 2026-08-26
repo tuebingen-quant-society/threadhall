@@ -68,7 +68,7 @@ export function MessageRow({ message, replyTarget, own, author, memberNames, onE
 			<div><button class="text-button" type="button" onClick={stopEditing}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
 		</form> : <><MessageBody html={message.rendered_body} memberNames={memberNames} />
 			{message.inline_apps?.map((app) => <McpApp key={`${app.server}:${app.resource_uri}`} app={app} />)}
-			{onQuestionAnswer && message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={questionAnswers?.get(question.id)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
+			{onQuestionAnswer && message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={questionAnswers?.get(question.id)} showQuestion={!message.body.includes(question.question)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
 		{!deleted && !editing && <details class="message-actions">
 			<summary ref={actionTrigger} aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
 			<div>

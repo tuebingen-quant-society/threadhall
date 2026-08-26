@@ -26,6 +26,7 @@ func TestOpenAppliesCoreMigration(t *testing.T) {
 		"agents", "agent_conversation_grants", "agent_tasks",
 		"agent_capabilities",
 		"message_apps",
+		"conversation_reads", "thread_reads",
 	}
 	for _, table := range wantTables {
 		var count int
@@ -38,6 +39,15 @@ func TestOpenAppliesCoreMigration(t *testing.T) {
 		}
 		if count != 1 {
 			t.Errorf("table %q count = %d, want 1", table, count)
+		}
+	}
+	for _, column := range []string{"avatar_mime", "avatar_data", "avatar_updated_at"} {
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('users') WHERE name = ?`, column).Scan(&count); err != nil {
+			t.Fatalf("look up users column %q: %v", column, err)
+		}
+		if count != 1 {
+			t.Errorf("users column %q count = %d, want 1", column, count)
 		}
 	}
 }

@@ -58,4 +58,7 @@ type Repository interface {
 	SearchUsers(context.Context, int64, string, int) ([]DirectoryUser, error)
 	SessionUser(context.Context, [32]byte, time.Time) (User, error)
 	RevokeSession(context.Context, [32]byte) error
+	SetAvatar(context.Context, int64, Avatar) error
+	DeleteAvatar(context.Context, int64) error
+	Avatar(context.Context, int64, int64) (Avatar, error)
 }

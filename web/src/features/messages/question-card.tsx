@@ -8,7 +8,7 @@ export function linkedQuestionAnswer(messages: Message[], currentUserId: number,
 	return reply?.body.slice(prefix.length).trim();
 }
 
-export function QuestionCard({ question, answered, onAnswer }: { question: Question; answered?: string; onAnswer: (answer: string) => void | Promise<void> }) {
+export function QuestionCard({ question, answered, showQuestion = true, onAnswer }: { question: Question; answered?: string; showQuestion?: boolean; onAnswer: (answer: string) => void | Promise<void> }) {
 	const [otherOpen, setOtherOpen] = useState(false);
 	const [other, setOther] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ export function QuestionCard({ question, answered, onAnswer }: { question: Quest
 
 	const customSelected = selected && !question.options.some((option) => option.label === selected);
 	return <section class="question-card" aria-label={question.header}>
-		<p>{question.question}</p>
+		{showQuestion && <p>{question.question}</p>}
 		<div class="question-options">
 			{question.options.map((option) => <button class={selected === option.label ? "selected" : undefined} type="button" aria-pressed={selected === option.label} disabled={busy || Boolean(selected)} onClick={() => void answer(option.label)}>
 				<span>{option.label}</span>{option.description && <small>{option.description}</small>}

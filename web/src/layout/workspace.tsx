@@ -30,6 +30,7 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 	const contextDrawer = useMedia("(max-width: 980px)");
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const [contextOpen, setContextOpen] = useState(false);
+	const [contextCollapsed, setContextCollapsed] = useState(false);
 	const navigationPanel = useRef<HTMLElement>(null);
 	const contextPanel = useRef<HTMLElement>(null);
 	const navigationOpener = useRef<HTMLButtonElement>(null);
@@ -44,7 +45,7 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 		if (!compact) setNavigationOpen(false);
 	}, [compact]);
 	useEffect(() => {
-		if (!contextDrawer) setContextOpen(false);
+		if (!contextDrawer) setContextOpen(false); else setContextCollapsed(false);
 	}, [contextDrawer]);
 	useEffect(() => {
 		if (previousSelection.current !== selectionKey && compact && navigationOpen) {
@@ -96,11 +97,11 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 	}
 
 	const navigationHidden = compact && !navigationOpen;
-	const contextHidden = contextDrawer && !contextOpen;
+	const contextHidden = contextDrawer ? !contextOpen : contextCollapsed;
 	const drawerOpen = (compact && navigationOpen) || (contextDrawer && contextOpen);
 
 	return (
-		<div class="workspace-shell">
+		<div class={contextCollapsed && !contextDrawer ? "workspace-shell context-collapsed" : "workspace-shell"}>
 			<div class="mobile-toolbar">
 				<button ref={navigationOpener} type="button" aria-label="Open conversations" aria-expanded={navigationOpen} onClick={() => { setContextOpen(false); setNavigationOpen(true); }}>Conversations</button>
 				<span>Threadhall</span>
@@ -111,10 +112,13 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 				{navigation}
 			</aside>
 			<main ref={mainPanel} class="conversation-pane" aria-label="Conversation workspace" tabIndex={-1} inert={drawerOpen || undefined}>{main}</main>
-			<aside ref={contextPanel} class={contextOpen ? "context-pane is-open" : "context-pane"} aria-label="Conversation details" aria-hidden={contextHidden} inert={contextHidden || undefined} role={contextDrawer ? "dialog" : undefined}>
-				<button class="drawer-close" type="button" aria-label="Close conversation details" onClick={() => closeDrawers("context")}>Close</button>
-				{context}
-			</aside>
+			<div class="context-slot">
+				<aside ref={contextPanel} class={`${contextOpen ? "context-pane is-open" : "context-pane"}${contextCollapsed && !contextDrawer ? " is-collapsed" : ""}`} aria-label="Conversation details" aria-hidden={contextHidden} inert={contextHidden || undefined} role={contextDrawer ? "dialog" : undefined}>
+					<button class="drawer-close" type="button" aria-label="Close conversation details" onClick={() => closeDrawers("context")}>Close</button>
+					{!contextCollapsed && <><button class="context-collapse" type="button" aria-label="Hide details" onClick={() => setContextCollapsed(true)}>Hide</button>{context}</>}
+				</aside>
+				{contextCollapsed && !contextDrawer && <button class="context-restore" type="button" aria-label="Show details" onClick={() => setContextCollapsed(false)}>Details</button>}
+			</div>
 			{drawerOpen && <button class="drawer-backdrop" type="button" aria-label="Close open drawer" onClick={() => closeDrawers(navigationOpen ? "navigation" : "context")} />}
 		</div>
 	);

@@ -95,13 +95,14 @@ describe("Timeline", () => {
 	it("disables a question after the current user posts its linked answer", () => {
 		const question = { id: "scope", header: "Scope", question: "Where?", is_other: false,
 			options: [{ label: "Here", description: "This channel." }] };
-		const message: Message = { ...first, questions: [question] };
+		const message: Message = { ...first, body: "**Scope:** Where?", rendered_body: "<p><strong>Scope:</strong> Where?</p>", questions: [question] };
 		const answer: Message = { ...first, id: 3, author_id: 9, reply_to_message_id: first.id,
 			body: '@codex Answer to "Where?": Here', rendered_body: '<p>answer</p>' };
 		render(<Timeline messages={[message, answer]} currentUserId={9} memberNames={new Map([[4, "codex"], [9, "admin"]])}
 			onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} onQuestionAnswer={vi.fn()} />);
 
 		const selected = screen.getByRole("button", { name: /Here/ }) as HTMLButtonElement;
+		expect(screen.getAllByText("Where?")).toHaveLength(1);
 		expect(selected.disabled).toBe(true);
 		expect(selected.classList.contains("selected")).toBe(true);
 		expect(screen.queryByText("Answered: Here")).toBeNull();

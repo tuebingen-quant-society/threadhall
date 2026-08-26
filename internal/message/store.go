@@ -10,6 +10,7 @@ var (
 	ErrInvalidInput = errors.New("invalid message input")
 	ErrNotFound     = errors.New("message resource not found")
 	ErrConflict     = errors.New("message request conflicts with existing state")
+	ErrForbidden    = errors.New("message operation forbidden")
 	ErrBusy         = errors.New("message persistence is busy")
 )
 
@@ -44,4 +45,6 @@ type Repository interface {
 	History(context.Context, History) (Page, error)
 	Thread(context.Context, Thread) (ThreadPage, error)
 	Threads(context.Context, ListThreads) (ThreadList, error)
+	MarkThreadRead(context.Context, int64, int64, int64, time.Time) error
+	DeleteThread(context.Context, int64, int64, int64) error
 }

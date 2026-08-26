@@ -20,6 +20,7 @@ var migrations = []string{
 	"migrations/007_message_apps.sql",
 	"migrations/008_message_references.sql",
 	"migrations/009_message_questions.sql",
+	"migrations/010_profiles_reads.sql",
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {

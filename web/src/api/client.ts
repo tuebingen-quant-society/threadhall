@@ -105,9 +105,9 @@ export class ApiClient {
 	capabilities(id: number, signal?: AbortSignal) {
 		return this.request<CapabilityPage>(`/conversations/${id}/capabilities`, {}, signal);
 	}
-	createChannel(kind: Exclude<ConversationKind, "dm">, name: string, key: string, signal?: AbortSignal) {
+	createChannel(kind: Exclude<ConversationKind, "dm">, name: string, key: string, memberIds: number[] = [], signal?: AbortSignal) {
 		return this.request<Conversation>("/conversations", {
-			method: "POST", body: JSON.stringify({ kind, name, idempotency_key: key }),
+			method: "POST", body: JSON.stringify({ kind, name, ...(kind === "private" ? { member_ids: memberIds } : {}), idempotency_key: key }),
 		}, signal);
 	}
 	createDM(otherUserId: number, key: string, signal?: AbortSignal) {
@@ -120,6 +120,12 @@ export class ApiClient {
 			method: "POST", body: JSON.stringify({ source_message_id: sourceMessageId, kind, name, idempotency_key: key }),
 		}, signal);
 	}
+	deleteConversation(id: number, signal?: AbortSignal) {
+		return this.request<void>(`/conversations/${id}`, { method: "DELETE" }, signal);
+	}
+	markConversationRead(id: number, signal?: AbortSignal) {
+		return this.request<void>(`/conversations/${id}/read`, { method: "PUT" }, signal);
+	}
 
 	history(conversationId: number, signal?: AbortSignal, beforeId?: number) {
 		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;
@@ -131,6 +137,12 @@ export class ApiClient {
 	}
 	threads(conversationId: number, signal?: AbortSignal) {
 		return this.request<ThreadList>(`/conversations/${conversationId}/threads`, {}, signal);
+	}
+	deleteThread(conversationId: number, rootMessageId: number, signal?: AbortSignal) {
+		return this.request<void>(`/conversations/${conversationId}/threads/${rootMessageId}`, { method: "DELETE" }, signal);
+	}
+	markThreadRead(conversationId: number, rootMessageId: number, signal?: AbortSignal) {
+		return this.request<void>(`/conversations/${conversationId}/threads/${rootMessageId}/read`, { method: "PUT" }, signal);
 	}
 	sendMessage(conversationId: number, body: string, key: string, signal?: AbortSignal, replyToMessageId?: number) {
 		return this.request<MessageResult>(`/conversations/${conversationId}/messages`, {
@@ -152,4 +164,14 @@ export class ApiClient {
 			method: "DELETE", body: JSON.stringify({ idempotency_key: key }),
 		}, signal);
 	}
+	setAvatar(file: File, signal?: AbortSignal) {
+		return this.request<void>("/profile/avatar", { method: "PUT", body: file, headers: { "Content-Type": file.type } }, signal);
+	}
+	deleteAvatar(signal?: AbortSignal) {
+		return this.request<void>("/profile/avatar", { method: "DELETE" }, signal);
+	}
+}
+
+export function avatarURL(userId: number, version = 0) {
+	return `${API_ROOT}/users/${userId}/avatar?v=${version}`;
 }

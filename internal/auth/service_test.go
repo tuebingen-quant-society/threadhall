@@ -287,3 +287,9 @@ func (r *recordingRepository) RevokeSession(_ context.Context, hash [32]byte) er
 	r.revokeHash = hash
 	return nil
 }
+
+func (r *recordingRepository) SetAvatar(_ context.Context, _ int64, _ Avatar) error { return nil }
+func (r *recordingRepository) DeleteAvatar(_ context.Context, _ int64) error        { return nil }
+func (r *recordingRepository) Avatar(_ context.Context, _, _ int64) (Avatar, error) {
+	return Avatar{}, nil
+}

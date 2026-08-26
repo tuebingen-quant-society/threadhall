@@ -61,6 +61,7 @@ export function ConversationList({ conversations, selectedId, selectedThreadId, 
 					>
 						<span aria-hidden="true">{conversation.kind === "dm" ? "↔" : conversation.kind === "private" ? "◇" : "#"}</span>
 						<span>{conversationLabel(conversation)}</span>
+						{(conversation.unread_count ?? 0) > 0 && <small class="unread-count" aria-label={`${conversation.unread_count} unread messages`}>{conversation.unread_count}</small>}
 					</button>
 					{threads.length > 0 && <button class="thread-toggle" type="button" aria-label={`${hidden ? "Expand" : "Collapse"} threads for ${conversationLabel(conversation)}`} aria-expanded={!hidden} onClick={() => toggle(conversation.id)}>{hidden ? "›" : "⌄"}</button>}
 					</div>
@@ -71,7 +72,9 @@ export function ConversationList({ conversations, selectedId, selectedThreadId, 
 						type="button" key={thread.root.id} aria-label={`Thread: ${preview}, ${replies}`}
 						aria-current={thread.root.id === selectedThreadId ? "page" : undefined}
 						onClick={() => onSelectThread?.(conversation, thread)}>
-						<span aria-hidden="true">└</span><span>{preview}</span><small>{thread.reply_count}</small>
+						<span aria-hidden="true">└</span><span>{preview}</span>{(thread.unread_count ?? 0) > 0
+							? <small class="unread-count" aria-label={`${thread.unread_count} unread replies`}>{thread.unread_count}</small>
+							: <small>{thread.reply_count}</small>}
 					</button>;
 					})}
 				</div>;

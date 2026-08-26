@@ -19,6 +19,7 @@ type ChannelRecord struct {
 	CreatorID      int64
 	Kind           Kind
 	Name           string
+	MemberIDs      []int64
 	IdempotencyKey string
 	CreatedAt      time.Time
 }
@@ -49,4 +50,6 @@ type Repository interface {
 	CanRead(context.Context, int64, int64) (bool, error)
 	AddMember(context.Context, MemberRecord) error
 	RemoveMember(context.Context, MemberRecord) error
+	DeleteConversation(context.Context, int64, int64) error
+	MarkRead(context.Context, int64, int64, time.Time) error
 }

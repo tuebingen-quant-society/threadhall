@@ -154,6 +154,30 @@ func TestServiceValidatesConversationFork(t *testing.T) {
 	}
 }
 
+func TestServiceNormalizesPrivateMembersAndValidatesLifecycleCommands(t *testing.T) {
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	repository := &recordingRepository{}
+	service, err := NewService(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if _, err := service.CreateChannel(context.Background(), CreateChannel{CreatorID: 1, Kind: KindPrivate, Name: "room", MemberIDs: []int64{2, 2, 1}, IdempotencyKey: "room"}); err != nil {
+		t.Fatalf("CreateChannel: %v", err)
+	}
+	if len(repository.channel.MemberIDs) != 1 || repository.channel.MemberIDs[0] != 2 {
+		t.Fatalf("member IDs = %#v, want [2]", repository.channel.MemberIDs)
+	}
+	if _, err := service.CreateChannel(context.Background(), CreateChannel{CreatorID: 1, Kind: KindChannel, Name: "public", MemberIDs: []int64{2}, IdempotencyKey: "public"}); err != ErrInvalidInput {
+		t.Fatalf("public members error = %v, want ErrInvalidInput", err)
+	}
+	if err := service.Delete(context.Background(), DeleteConversation{ActorID: 1, ConversationID: 7}); err != nil || repository.deletedID != 7 {
+		t.Fatalf("Delete = %v, id %d", err, repository.deletedID)
+	}
+	if err := service.MarkRead(context.Background(), MarkRead{UserID: 1, ConversationID: 7}); err != nil || repository.readAt != now {
+		t.Fatalf("MarkRead = %v, at %v", err, repository.readAt)
+	}
+}
+
 type recordingRepository struct {
 	channel                        ChannelRecord
 	dm                             DMRecord
@@ -163,6 +187,8 @@ type recordingRepository struct {
 	memberLimit                    int
 	member                         MemberRecord
 	fork                           ForkRecord
+	deletedID                      int64
+	readAt                         time.Time
 }
 
 func (r *recordingRepository) CreateChannel(_ context.Context, record ChannelRecord) (Conversation, error) {
@@ -207,5 +233,15 @@ func (r *recordingRepository) AddMember(_ context.Context, record MemberRecord) 
 
 func (r *recordingRepository) RemoveMember(_ context.Context, record MemberRecord) error {
 	r.member = record
+	return nil
+}
+
+func (r *recordingRepository) DeleteConversation(_ context.Context, _ int64, conversationID int64) error {
+	r.deletedID = conversationID
+	return nil
+}
+
+func (r *recordingRepository) MarkRead(_ context.Context, _, _ int64, at time.Time) error {
+	r.readAt = at
 	return nil
 }

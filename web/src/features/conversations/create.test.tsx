@@ -33,4 +33,20 @@ describe("NewConversationForm direct messages", () => {
 		expect((screen.getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
 		expect(onCreate).not.toHaveBeenCalled();
 	});
+
+	it("creates a named private channel with explicitly selected members", async () => {
+		const onCreate = vi.fn().mockResolvedValue(undefined);
+		const onFindUsers = vi.fn().mockResolvedValue({ users: [{ id: 2, username: "lin" }, { id: 3, username: "ada" }] });
+		render(<NewConversationForm onCreate={onCreate} onFindUsers={onFindUsers} />);
+
+		fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+		fireEvent.change(screen.getByLabelText("Type"), { target: { value: "private" } });
+		fireEvent.input(screen.getByLabelText("Channel name"), { target: { value: "research" } });
+		fireEvent.input(screen.getByRole("combobox", { name: "Add members" }), { target: { value: "" } });
+		fireEvent.click(await screen.findByRole("option", { name: "lin" }));
+		fireEvent.click(screen.getByRole("option", { name: "ada" }));
+		fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+		await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ kind: "private", name: "research", memberIds: [2, 3] }));
+	});
 });

@@ -59,6 +59,14 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	if threads.Code != http.StatusOK || api.threads.ConversationID != 3 || api.threads.UserID != 4 || api.threads.Limit != message.MaxPageLimit {
 		t.Fatalf("threads = status %d query %#v; body=%s", threads.Code, api.threads, threads.Body.String())
 	}
+	readThread := messageJSONMutation(t, handler, http.MethodPut, "/api/v1/conversations/3/threads/7/read", map[string]any{}, csrf, true)
+	if readThread.Code != http.StatusNoContent || api.markedThread.UserID != 4 || api.markedThread.ConversationID != 3 || api.markedThread.RootMessageID != 7 {
+		t.Fatalf("mark thread read = status %d command %#v", readThread.Code, api.markedThread)
+	}
+	deletedThread := messageJSONMutation(t, handler, http.MethodDelete, "/api/v1/conversations/3/threads/7", map[string]any{}, csrf, true)
+	if deletedThread.Code != http.StatusNoContent || api.deletedThread.ActorID != 4 || api.deletedThread.RootMessageID != 7 {
+		t.Fatalf("delete thread = status %d command %#v", deletedThread.Code, api.deletedThread)
+	}
 }
 
 func TestMessageHTTPSignalsCommittedEventWithoutChangingSuccess(t *testing.T) {
@@ -211,15 +219,17 @@ func messageRead(t *testing.T, handler http.Handler, path string) *httptest.Resp
 }
 
 type fakeMessageAPI struct {
-	sent    message.Send
-	edited  message.Edit
-	deleted message.Delete
-	history message.History
-	thread  message.Thread
-	threads message.ListThreads
-	result  message.Result
-	err     error
-	calls   int
+	sent          message.Send
+	edited        message.Edit
+	deleted       message.Delete
+	history       message.History
+	thread        message.Thread
+	threads       message.ListThreads
+	result        message.Result
+	err           error
+	calls         int
+	markedThread  message.MarkThreadRead
+	deletedThread message.DeleteThread
 }
 
 type recordingNotifier struct {
@@ -266,4 +276,16 @@ func (a *fakeMessageAPI) Threads(_ context.Context, query message.ListThreads) (
 	a.calls++
 	a.threads = query
 	return message.ThreadList{}, a.err
+}
+
+func (a *fakeMessageAPI) MarkThreadRead(_ context.Context, command message.MarkThreadRead) error {
+	a.calls++
+	a.markedThread = command
+	return a.err
+}
+
+func (a *fakeMessageAPI) DeleteThread(_ context.Context, command message.DeleteThread) error {
+	a.calls++
+	a.deletedThread = command
+	return a.err
 }

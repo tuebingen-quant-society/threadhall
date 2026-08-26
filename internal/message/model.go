@@ -83,9 +83,18 @@ type ListThreads struct {
 	Limit                  int
 }
 
+type MarkThreadRead struct {
+	UserID, ConversationID, RootMessageID int64
+}
+
+type DeleteThread struct {
+	ActorID, ConversationID, RootMessageID int64
+}
+
 type ThreadSummary struct {
-	Root       Message `json:"root"`
-	ReplyCount int     `json:"reply_count"`
+	Root        Message `json:"root"`
+	ReplyCount  int     `json:"reply_count"`
+	UnreadCount int     `json:"unread_count"`
 }
 
 type ThreadList struct {

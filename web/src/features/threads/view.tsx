@@ -18,6 +18,9 @@ interface ThreadViewProps {
 	capabilities: Capability[];
 	revision: number;
 	onFork: (messageId: number, kind: Exclude<ConversationKind, "dm">, name: string) => Promise<void>;
+	canDelete?: boolean;
+	onDeleted?: () => void;
+	onRead?: () => void;
 }
 
 function ThreadMessage({ message, replyTarget, author, memberNames, allMessages, currentUserId, onReply, onQuestionAnswer }: { message: Message; replyTarget?: Message; author: string; memberNames: Map<number, string>; allMessages: Message[]; currentUserId: number; onReply: (message: Message) => void; onQuestionAnswer: (message: Message, question: Question, answer: string) => Promise<void> }) {
@@ -26,11 +29,11 @@ function ThreadMessage({ message, replyTarget, author, memberNames, allMessages,
 		<ReplyReference message={message} target={replyTarget} memberNames={memberNames} />
 		{message.deleted_at ? <p class="tombstone">Message deleted</p> : <><MessageBody html={message.rendered_body} memberNames={memberNames} />
 			{message.inline_apps?.map((app) => <McpApp key={`${app.server}:${app.resource_uri}`} app={app} />)}
-			{message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={linkedQuestionAnswer(allMessages, currentUserId, message.id, question)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
+			{message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={linkedQuestionAnswer(allMessages, currentUserId, message.id, question)} showQuestion={!message.body.includes(question.question)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
 	</article>;
 }
 
-export function ThreadView({ api, conversationId, root, currentUserId, memberNames, members, capabilities, revision, onFork }: ThreadViewProps) {
+export function ThreadView({ api, conversationId, root, currentUserId, memberNames, members, capabilities, revision, onFork, canDelete, onDeleted, onRead }: ThreadViewProps) {
 	const [page, setPage] = useState<ThreadPage>();
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
@@ -39,16 +42,25 @@ export function ThreadView({ api, conversationId, root, currentUserId, memberNam
 	const [forkKind, setForkKind] = useState<Exclude<ConversationKind, "dm">>("private");
 	const [forkBusy, setForkBusy] = useState(false);
 	const [replyingTo, setReplyingTo] = useState<Message>();
+	const [deleting, setDeleting] = useState(false);
 
 	useEffect(() => {
 		const controller = new AbortController();
 		setLoading(true); setError("");
 		void api.thread(conversationId, root.id, controller.signal)
-			.then((result) => { if (!controller.signal.aborted) setPage(result); })
+			.then(async (result) => { if (!controller.signal.aborted) { setPage(result); await api.markThreadRead(conversationId, root.id, controller.signal); onRead?.(); } })
 			.catch((cause) => { if (!controller.signal.aborted) setError(errorDetail(cause)); })
 			.finally(() => { if (!controller.signal.aborted) setLoading(false); });
 		return () => controller.abort();
-	}, [api, conversationId, revision, root.id]);
+	}, [api, conversationId, revision, root.id, onRead]);
+
+	async function deleteWholeThread() {
+		if (!confirm("Delete this thread and every reply? This cannot be undone.")) return;
+		setDeleting(true); setError("");
+		try { await api.deleteThread(conversationId, root.id); onDeleted?.(); }
+		catch (cause) { setError(errorDetail(cause)); }
+		finally { setDeleting(false); }
+	}
 
 	async function send(body: string, key: string, replyToMessageId?: number) {
 		const result = await api.sendThreadReply(conversationId, root.id, body, key, undefined, replyToMessageId);
@@ -79,7 +91,7 @@ export function ThreadView({ api, conversationId, root, currentUserId, memberNam
 	const allMessages = page ? [page.root, ...page.replies] : [root];
 	const byID = new Map(allMessages.map((message) => [message.id, message]));
 	return <section class="thread-view" aria-label="Thread conversation">
-		<div class="thread-toolbar"><span>{page?.replies.length ?? 0} replies</span><button type="button" onClick={() => setForkOpen((value) => !value)}>Fork to channel</button></div>
+		<div class="thread-toolbar"><span>{page?.replies.length ?? 0} replies</span><div><button type="button" onClick={() => setForkOpen((value) => !value)}>Fork to channel</button>{canDelete && <button class="danger-button" type="button" disabled={deleting} onClick={() => void deleteWholeThread()}>{deleting ? "Deleting…" : "Delete thread"}</button>}</div></div>
 		{forkOpen && <form class="thread-fork-form" onSubmit={fork}>
 			<label>Name<input value={forkName} maxLength={80} onInput={(event) => setForkName(event.currentTarget.value)} required /></label>
 			<label>Visibility<select value={forkKind} onChange={(event) => setForkKind(event.currentTarget.value as Exclude<ConversationKind, "dm">)}><option value="private">Private</option><option value="channel">Public</option></select></label>

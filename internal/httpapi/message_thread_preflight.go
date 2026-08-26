@@ -41,6 +41,21 @@ func preflightMessageThreadList(next http.Handler) http.Handler {
 	})
 }
 
+func preflightMessageThreadMutation(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if _, ok := preflightMessageTarget(w, request, validateNoMessageQuery); !ok {
+			return
+		}
+		conversationID, conversationErr := positiveMessagePathID(request, "conversation_id")
+		rootID, rootErr := positiveMessagePathID(request, "root_message_id")
+		if conversationErr != nil || rootErr != nil {
+			writeMessagePreflightProblem(w, message.ErrInvalidInput)
+			return
+		}
+		next.ServeHTTP(w, withPreparedMessage(request, preparedMessage{conversationID: conversationID, rootMessageID: rootID}))
+	})
+}
+
 func validateThreadPageQuery(values url.Values) error {
 	_, _, err := boundedThreadPage(values)
 	return err

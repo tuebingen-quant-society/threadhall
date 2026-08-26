@@ -20,6 +20,8 @@ type ConversationAPI interface {
 	Members(context.Context, conversation.ListMembers) (conversation.MemberPage, error)
 	AddMember(context.Context, conversation.ChangeMember) error
 	RemoveMember(context.Context, conversation.ChangeMember) error
+	Delete(context.Context, conversation.DeleteConversation) error
+	MarkRead(context.Context, conversation.MarkRead) error
 }
 
 type conversationHandler struct {
@@ -59,12 +61,15 @@ func RegisterConversations(
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/members", pageRead(handler.members))
 	mux.Handle("POST /api/v1/conversations/{conversation_id}/members", mutation(handler.addMember))
 	mux.Handle("DELETE /api/v1/conversations/{conversation_id}/members/{user_id}", mutation(handler.removeMember))
+	mux.Handle("DELETE /api/v1/conversations/{conversation_id}", mutation(handler.delete))
+	mux.Handle("PUT /api/v1/conversations/{conversation_id}/read", mutation(handler.markRead))
 }
 
 type createConversationRequest struct {
 	Kind           conversation.Kind `json:"kind"`
 	Name           string            `json:"name"`
 	OtherUserID    int64             `json:"other_user_id"`
+	MemberIDs      []int64           `json:"member_ids"`
 	IdempotencyKey string            `json:"idempotency_key"`
 }
 
@@ -79,7 +84,7 @@ func (h *conversationHandler) create(w http.ResponseWriter, request *http.Reques
 	var err error
 	switch body.Kind {
 	case conversation.KindDM:
-		if body.Name != "" {
+		if body.Name != "" || len(body.MemberIDs) > 0 {
 			writeInvalidRequest(w)
 			return
 		}
@@ -87,12 +92,12 @@ func (h *conversationHandler) create(w http.ResponseWriter, request *http.Reques
 			RequesterID: user.ID, OtherUserID: body.OtherUserID, IdempotencyKey: body.IdempotencyKey,
 		})
 	case conversation.KindChannel, conversation.KindPrivate:
-		if body.OtherUserID != 0 {
+		if body.OtherUserID != 0 || (body.Kind == conversation.KindChannel && len(body.MemberIDs) > 0) {
 			writeInvalidRequest(w)
 			return
 		}
 		created, err = h.api.CreateChannel(request.Context(), conversation.CreateChannel{
-			CreatorID: user.ID, Kind: body.Kind, Name: body.Name, IdempotencyKey: body.IdempotencyKey,
+			CreatorID: user.ID, Kind: body.Kind, Name: body.Name, MemberIDs: body.MemberIDs, IdempotencyKey: body.IdempotencyKey,
 		})
 	default:
 		err = conversation.ErrInvalidInput
@@ -102,6 +107,36 @@ func (h *conversationHandler) create(w http.ResponseWriter, request *http.Reques
 	}
 	h.notifier.Notify(0)
 	writeJSON(w, http.StatusCreated, created)
+}
+
+func (h *conversationHandler) delete(w http.ResponseWriter, request *http.Request) {
+	conversationID, err := positivePathID(request, "conversation_id")
+	if err != nil {
+		writeConversationProblem(w, err)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	err = h.api.Delete(request.Context(), conversation.DeleteConversation{ActorID: user.ID, ConversationID: conversationID})
+	if writeConversationProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(0)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *conversationHandler) markRead(w http.ResponseWriter, request *http.Request) {
+	conversationID, err := positivePathID(request, "conversation_id")
+	if err != nil {
+		writeConversationProblem(w, err)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	err = h.api.MarkRead(request.Context(), conversation.MarkRead{UserID: user.ID, ConversationID: conversationID})
+	if writeConversationProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(0)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *conversationHandler) list(w http.ResponseWriter, request *http.Request) {
@@ -283,7 +318,7 @@ func writeConversationProblem(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, conversation.ErrConflict):
 		problem = Problem{Status: 409, Code: "conversation_conflict", Detail: "conversation request conflicts with existing state"}
 	case errors.Is(err, conversation.ErrForbidden):
-		problem = Problem{Status: 403, Code: "membership_admin_required", Detail: "workspace administrator access is required"}
+		problem = Problem{Status: 403, Code: "forbidden", Detail: "you are not allowed to perform this action"}
 	case errors.Is(err, conversation.ErrBusy):
 		problem = Problem{Status: 503, Code: "temporarily_unavailable", Detail: "service is temporarily unavailable"}
 	}

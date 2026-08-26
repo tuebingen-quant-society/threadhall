@@ -11,9 +11,18 @@ import (
 )
 
 func (s *ConversationStore) CreateChannel(ctx context.Context, record conversation.ChannelRecord) (conversation.Conversation, error) {
-	fingerprint := mustFingerprint(record.Kind, record.Name)
+	fingerprint := mustFingerprint(record.Kind, record.Name, record.MemberIDs)
 	var created conversation.Conversation
 	err := s.write(ctx, func(tx *sql.Tx) error {
+		for _, memberID := range record.MemberIDs {
+			var human bool
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND principal_kind = 'human')`, memberID).Scan(&human); err != nil {
+				return err
+			}
+			if !human {
+				return conversation.ErrNotFound
+			}
+		}
 		id, found, err := findMutation(ctx, tx, record.CreatorID, record.IdempotencyKey, "create_channel", fingerprint)
 		if err != nil {
 			return err
@@ -60,6 +69,14 @@ func (s *ConversationStore) CreateChannel(ctx context.Context, record conversati
 		if _, err := tx.ExecContext(ctx, `INSERT INTO conversation_members(conversation_id, user_id, joined_at)
 			VALUES (?, ?, ?)`, created.ID, record.CreatorID, unix(record.CreatedAt)); err != nil {
 			return err
+		}
+		for _, memberID := range record.MemberIDs {
+			if memberID == record.CreatorID {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO conversation_members(conversation_id, user_id, joined_at) VALUES (?, ?, ?)`, created.ID, memberID, unix(record.CreatedAt)); err != nil {
+				return err
+			}
 		}
 		if err := recordMutation(ctx, tx, record.CreatorID, record.IdempotencyKey, "create_channel", fingerprint, created.ID, unix(record.CreatedAt)); err != nil {
 			return err

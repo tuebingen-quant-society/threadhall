@@ -138,6 +138,7 @@ func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (*ser
 	agentStore := store.NewAgentStore(db, writer)
 	handler := app.New(db)
 	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
+	httpapi.RegisterProfiles(handler, authService, authService, cfg.PublicURL)
 	httpapi.RegisterConversations(handler, authService, conversationService, pump, cfg.PublicURL)
 	httpapi.RegisterMessages(handler, authService, messageService, pump, cfg.PublicURL)
 	httpapi.RegisterRealtime(handler, authService, socket, cfg.PublicURL)

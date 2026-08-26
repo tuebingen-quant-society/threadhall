@@ -46,6 +46,25 @@ func TestMessageStorePersistsOneLevelAuthorizedThreads(t *testing.T) {
 	}
 }
 
+func TestMessageStoreDeletesWholeThreadForRootAuthorOwnerOrAdmin(t *testing.T) {
+	store, db := newTestMessageStore(t)
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	seedMessageFixtures(t, store.writer, now, []int64{1, 2, 3}, "owner", "root-author", "member")
+	root := sendThreadFixture(t, store, message.SendRecord{ConversationID: 1, AuthorID: 2, Body: "root", RenderedBody: "<p>root</p>", IdempotencyKey: "delete-root", CreatedAt: now})
+	sendThreadFixture(t, store, message.SendRecord{ConversationID: 1, AuthorID: 3, ThreadRootID: &root.Message.ID, Body: "reply", RenderedBody: "<p>reply</p>", IdempotencyKey: "delete-reply", CreatedAt: now})
+
+	if err := store.DeleteThread(context.Background(), 3, 1, root.Message.ID); !errors.Is(err, message.ErrForbidden) {
+		t.Fatalf("member DeleteThread error = %v, want ErrForbidden", err)
+	}
+	if err := store.DeleteThread(context.Background(), 2, 1, root.Message.ID); err != nil {
+		t.Fatalf("author DeleteThread: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM messages WHERE id = ? OR thread_root_id = ?`, root.Message.ID, root.Message.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("thread message count = %d, %v; want 0", count, err)
+	}
+}
+
 func sendThreadFixture(t *testing.T, store *MessageStore, record message.SendRecord) message.Result {
 	t.Helper()
 	result, err := store.Send(context.Background(), record)

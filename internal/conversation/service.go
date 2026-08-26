@@ -11,6 +11,7 @@ import (
 const (
 	maxChannelNameBytes = 80
 	maxIdempotencyBytes = 128
+	maxInitialMembers   = 100
 )
 
 // Service applies conversation validation before persistence.
@@ -33,10 +34,47 @@ func (s *Service) CreateChannel(ctx context.Context, command CreateChannel) (Con
 		!validIdempotencyKey(command.IdempotencyKey) {
 		return Conversation{}, ErrInvalidInput
 	}
+	members, ok := initialMembers(command.CreatorID, command.Kind, command.MemberIDs)
+	if !ok {
+		return Conversation{}, ErrInvalidInput
+	}
 	return s.repository.CreateChannel(ctx, ChannelRecord{
 		CreatorID: command.CreatorID, Kind: command.Kind, Name: name,
+		MemberIDs:      members,
 		IdempotencyKey: command.IdempotencyKey, CreatedAt: s.now().UTC(),
 	})
+}
+
+func initialMembers(creatorID int64, kind Kind, values []int64) ([]int64, bool) {
+	if kind == KindChannel && len(values) > 0 || len(values) > maxInitialMembers {
+		return nil, false
+	}
+	seen := map[int64]bool{creatorID: true}
+	result := make([]int64, 0, len(values))
+	for _, id := range values {
+		if id <= 0 {
+			return nil, false
+		}
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result, true
+}
+
+func (s *Service) Delete(ctx context.Context, command DeleteConversation) error {
+	if command.ActorID <= 0 || command.ConversationID <= 0 {
+		return ErrInvalidInput
+	}
+	return s.repository.DeleteConversation(ctx, command.ActorID, command.ConversationID)
+}
+
+func (s *Service) MarkRead(ctx context.Context, command MarkRead) error {
+	if command.UserID <= 0 || command.ConversationID <= 0 {
+		return ErrInvalidInput
+	}
+	return s.repository.MarkRead(ctx, command.UserID, command.ConversationID, s.now().UTC())
 }
 
 func (s *Service) CreateDM(ctx context.Context, command CreateDM) (Conversation, error) {

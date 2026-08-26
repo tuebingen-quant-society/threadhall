@@ -257,6 +257,29 @@ func TestAuthStoreSearchesUsersAlphabeticallyAndExcludesRequester(t *testing.T) 
 	}
 }
 
+func TestAuthStorePersistsBoundedProfileAvatarForAuthenticatedHumans(t *testing.T) {
+	store, _ := newTestAuthStore(t)
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	bootstrapTestAdmin(t, store, now)
+	avatar := auth.Avatar{MIME: "image/png", Data: []byte("png-bytes"), UpdatedAt: now}
+	if err := store.SetAvatar(context.Background(), 1, avatar); err != nil {
+		t.Fatalf("SetAvatar: %v", err)
+	}
+	stored, err := store.Avatar(context.Background(), 1, 1)
+	if err != nil || stored.MIME != avatar.MIME || string(stored.Data) != "png-bytes" || stored.UpdatedAt != now {
+		t.Fatalf("Avatar = (%#v, %v)", stored, err)
+	}
+	if _, err := store.Avatar(context.Background(), 99, 1); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("outsider Avatar error = %v, want ErrUnauthenticated", err)
+	}
+	if err := store.DeleteAvatar(context.Background(), 1); err != nil {
+		t.Fatalf("DeleteAvatar: %v", err)
+	}
+	if _, err := store.Avatar(context.Background(), 1, 1); !errors.Is(err, auth.ErrCredentialNotFound) {
+		t.Fatalf("deleted Avatar error = %v, want ErrCredentialNotFound", err)
+	}
+}
+
 func newTestAuthStore(t *testing.T) (*AuthStore, *sql.DB) {
 	t.Helper()
 	db := openTestDB(t)

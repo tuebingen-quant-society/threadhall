@@ -44,4 +44,13 @@ describe("ConversationList", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Expand threads for general" }));
 		expect(screen.getByRole("button", { name: "Thread: Review the signal model, 3 replies" })).toBeTruthy();
 	});
+
+	it("shows compact unread counts for channels and child threads", () => {
+		const channel = { ...conversations[0], unread_count: 5 };
+		const thread = { root: { id: 7, conversation_id: 2, author_id: 1, body: "Signal review", rendered_body: "<p>Signal review</p>", created_at: "2026-08-26T10:00:00Z" }, reply_count: 3, unread_count: 2 };
+		render(<ConversationList conversations={[channel]} threadsByConversation={new Map([[2, [thread]]])} onSelect={vi.fn()} />);
+
+		expect(screen.getByLabelText("5 unread messages").textContent).toBe("5");
+		expect(screen.getByLabelText("2 unread replies").textContent).toBe("2");
+	});
 });

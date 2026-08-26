@@ -20,10 +20,18 @@ func TestConversationMutationsRequireSessionCSRFAndIdempotencyKeys(t *testing.T)
 	csrf := tokenString(0x42)
 
 	valid := conversationJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations", map[string]any{
-		"kind": "private", "name": " staff ", "idempotency_key": "create-staff",
+		"kind": "private", "name": " staff ", "member_ids": []int64{7, 8}, "idempotency_key": "create-staff",
 	}, csrf, true)
-	if valid.Code != http.StatusCreated || api.channel.CreatorID != 4 || api.channel.IdempotencyKey != "create-staff" {
+	if valid.Code != http.StatusCreated || api.channel.CreatorID != 4 || api.channel.IdempotencyKey != "create-staff" || len(api.channel.MemberIDs) != 2 {
 		t.Fatalf("valid create = status %d command %#v; body=%s", valid.Code, api.channel, valid.Body.String())
+	}
+	deleted := conversationJSONMutation(t, handler, http.MethodDelete, "/api/v1/conversations/9", map[string]any{}, csrf, true)
+	if deleted.Code != http.StatusNoContent || api.deleted.ActorID != 4 || api.deleted.ConversationID != 9 {
+		t.Fatalf("delete = status %d command %#v; body=%s", deleted.Code, api.deleted, deleted.Body.String())
+	}
+	read := conversationJSONMutation(t, handler, http.MethodPut, "/api/v1/conversations/9/read", map[string]any{}, csrf, true)
+	if read.Code != http.StatusNoContent || api.read.UserID != 4 || api.read.ConversationID != 9 {
+		t.Fatalf("read = status %d command %#v; body=%s", read.Code, api.read, read.Body.String())
 	}
 	forked := conversationJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations/3/forks", map[string]any{
 		"source_message_id": 8, "kind": "private", "name": "follow-up", "idempotency_key": "fork-follow-up",
@@ -73,7 +81,7 @@ func TestConversationHTTPMapsStableDomainProblems(t *testing.T) {
 		{name: "invalid", err: conversation.ErrInvalidInput, want: 400, code: "invalid_request"},
 		{name: "missing", err: conversation.ErrNotFound, want: 404, code: "not_found"},
 		{name: "conflict", err: conversation.ErrConflict, want: 409, code: "conversation_conflict"},
-		{name: "forbidden", err: conversation.ErrForbidden, want: 403, code: "membership_admin_required"},
+		{name: "forbidden", err: conversation.ErrForbidden, want: 403, code: "forbidden"},
 		{name: "busy", err: conversation.ErrBusy, want: 503, code: "temporarily_unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -204,6 +212,18 @@ type fakeConversationAPI struct {
 	created   conversation.Conversation
 	fork      conversation.ForkConversation
 	createErr error
+	deleted   conversation.DeleteConversation
+	read      conversation.MarkRead
+}
+
+func (a *fakeConversationAPI) Delete(_ context.Context, command conversation.DeleteConversation) error {
+	a.deleted = command
+	return a.createErr
+}
+
+func (a *fakeConversationAPI) MarkRead(_ context.Context, command conversation.MarkRead) error {
+	a.read = command
+	return a.createErr
 }
 
 func (a *fakeConversationAPI) Fork(_ context.Context, command conversation.ForkConversation) (conversation.Fork, error) {

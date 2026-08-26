@@ -62,6 +62,20 @@ func (s *Service) Threads(ctx context.Context, query ListThreads) (ThreadList, e
 	return s.repository.Threads(ctx, query)
 }
 
+func (s *Service) MarkThreadRead(ctx context.Context, command MarkThreadRead) error {
+	if command.UserID <= 0 || command.ConversationID <= 0 || command.RootMessageID <= 0 {
+		return ErrInvalidInput
+	}
+	return s.repository.MarkThreadRead(ctx, command.UserID, command.ConversationID, command.RootMessageID, s.now().UTC())
+}
+
+func (s *Service) DeleteThread(ctx context.Context, command DeleteThread) error {
+	if command.ActorID <= 0 || command.ConversationID <= 0 || command.RootMessageID <= 0 {
+		return ErrInvalidInput
+	}
+	return s.repository.DeleteThread(ctx, command.ActorID, command.ConversationID, command.RootMessageID)
+}
+
 func (s *Service) Edit(ctx context.Context, command Edit) (Result, error) {
 	if command.MessageID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
 		!ValidIdempotencyKey(command.IdempotencyKey) {

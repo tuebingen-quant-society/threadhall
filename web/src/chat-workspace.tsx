@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import { ApiClient, errorDetail } from "./api/client";
 import { useSession } from "./auth/session";
@@ -9,6 +9,7 @@ import { defaultSocketFactory, type WorkspaceSocketFactory, useWorkspace } from 
 import { Composer } from "./features/messages/composer";
 import { Timeline } from "./features/messages/timeline";
 import { ThreadView } from "./features/threads/view";
+import { ProfilePanel } from "./features/profile/profile";
 import type { Capability, Message, Question, ThreadSummary } from "./api/types";
 import { WorkspaceShell } from "./layout/workspace";
 
@@ -28,6 +29,7 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 	const [threadsByConversation, setThreadsByConversation] = useState<Map<number, ThreadSummary[]>>(new Map());
 	const [capabilities, setCapabilities] = useState<Capability[]>([]);
 	const [replyingTo, setReplyingTo] = useState<(typeof state.timeline.messages)[number]>();
+	const [profileOpen, setProfileOpen] = useState(false);
 	const conversationIDs = useMemo(() => state.conversations.map((conversation) => conversation.id).join(","), [state.conversations]);
 	useEffect(() => {
 		if (threadRoot && threadRoot.conversation_id !== state.selectedId) setThreadRoot(undefined);
@@ -65,10 +67,25 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 		if (selected) setThreadsByConversation((current) => {
 			const next = new Map(current);
 			const threads = next.get(selected.id) ?? [];
-			if (!threads.some((item) => item.root.id === root.id)) next.set(selected.id, [{ root, reply_count: 0 }, ...threads]);
+			if (!threads.some((item) => item.root.id === root.id)) next.set(selected.id, [{ root, reply_count: 0, unread_count: 0 }, ...threads]);
 			return next;
 		});
 	}
+	const clearThreadUnread = useCallback(() => {
+		if (!selected || !threadRoot) return;
+		setThreadsByConversation((current) => {
+			const next = new Map(current);
+			next.set(selected.id, (next.get(selected.id) ?? []).map((thread) => thread.root.id === threadRoot.id ? { ...thread, unread_count: 0 } : thread));
+			return next;
+		});
+	}, [selected?.id, threadRoot?.id]);
+	const removeOpenThread = useCallback(() => {
+		if (!selected || !threadRoot) return;
+		setThreadsByConversation((current) => {
+			const next = new Map(current); next.set(selected.id, (next.get(selected.id) ?? []).filter((thread) => thread.root.id !== threadRoot.id)); return next;
+		});
+		setThreadRoot(undefined);
+	}, [selected?.id, threadRoot?.id]);
 
 	function replyTo(message: (typeof state.timeline.messages)[number]) {
 		setReplyingTo(message);
@@ -86,19 +103,20 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 
 	return <WorkspaceShell selectionKey={threadRoot ? `thread-${threadRoot.id}` : `conversation-${state.selectionGeneration}`}
 		navigation={<>
-			<header class="brand-block"><h1>Threadhall</h1><div><span>{user.username}</span><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
+			<header class="brand-block"><h1>Threadhall</h1><div><button class="profile-link" type="button" onClick={() => setProfileOpen(true)}>{user.username}</button><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
 			<NewConversationForm onCreate={state.createConversation} onFindUsers={(query, signal) => api.findUsers(query, signal)} />
 			<ConversationList conversations={state.conversations} selectedId={state.selectedId} selectedThreadId={threadRoot?.id} threadsByConversation={threadsByConversation}
 				loading={state.conversationLoading} loadingMore={state.conversationLoadingMore} error={state.conversationError}
 				hasMore={state.conversationCursor !== undefined} onLoadMore={() => void state.loadMoreConversations()}
-				onSelect={(item) => { setThreadRoot(undefined); state.select(item.id); }}
-				onSelectThread={(conversation, thread) => { if (conversation.id !== state.selectedId) state.select(conversation.id); setThreadRoot(thread.root); }} />
+				onSelect={(item) => { setProfileOpen(false); setThreadRoot(undefined); state.select(item.id); }}
+				onSelectThread={(conversation, thread) => { setProfileOpen(false); if (conversation.id !== state.selectedId) state.select(conversation.id); setThreadRoot(thread.root); }} />
 		</>}
 		main={<div class="conversation-main">
 			<header class="conversation-header"><div class="conversation-title">{threadRoot && selected && <button type="button" aria-label={`Back to ${title}`} onClick={() => setThreadRoot(undefined)}>←</button>}<h2>{threadRoot ? `Thread in ${title}` : selected ? title : "Select a conversation"}</h2></div><span class={`connection-status ${state.connection}`}><i />{connectionLabel(state.connection)}</span></header>
 			{state.mutationError && <p class="global-error" role="alert">{state.mutationError}</p>}
 			{selected ? threadRoot
-				? <ThreadView api={api} conversationId={selected.id} root={threadRoot} currentUserId={user.id} memberNames={memberNames} members={state.members} capabilities={capabilities} revision={state.threadRevision} onFork={async (messageId, kind, name) => {
+				? <ThreadView api={api} conversationId={selected.id} root={threadRoot} currentUserId={user.id} memberNames={memberNames} members={state.members} capabilities={capabilities} revision={state.threadRevision}
+					canDelete={user.admin || selected.created_by === user.id || threadRoot.author_id === user.id} onDeleted={removeOpenThread} onRead={clearThreadUnread} onFork={async (messageId, kind, name) => {
 					await api.forkConversation(selected.id, messageId, kind, name, `fork-${crypto.randomUUID()}`);
 				}} />
 				: <><Timeline messages={state.timeline.messages} pending={state.pending} currentUserId={user.id} memberNames={memberNames} loading={state.messageLoading} error={state.messageError} hasOlder={state.messageCursor !== undefined} onLoadOlder={() => void state.loadOlderMessages()} onEdit={state.editMessage} onDelete={state.deleteMessage} onOpenThread={openThread} onReply={replyTo} onQuestionAnswer={answerQuestion} />
@@ -106,6 +124,8 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 						replyTo={replyingTo} replyToAuthor={replyingTo ? memberNames.get(replyingTo.author_id) : undefined} onCancelReply={() => setReplyingTo(undefined)} /></>
 				: <div class="empty-workspace"><p>Select a conversation from the navigation, or create the first one.</p></div>}
 		</div>}
-		context={<ConversationDetail conversation={state.detail} members={state.members} loading={state.messageLoading} loadingMoreMembers={state.memberLoadingMore} error={state.detailError} hasMoreMembers={state.memberCursor !== undefined} onLoadMoreMembers={() => void state.loadMoreMembers()} />}
+		context={profileOpen ? <ProfilePanel api={api} user={user} onClose={() => setProfileOpen(false)} />
+			: <ConversationDetail conversation={state.detail} members={state.members} loading={state.messageLoading} loadingMoreMembers={state.memberLoadingMore} error={state.detailError} hasMoreMembers={state.memberCursor !== undefined} onLoadMoreMembers={() => void state.loadMoreMembers()}
+				canDelete={!!selected && selected.kind !== "dm" && (user.admin || selected.created_by === user.id)} onDelete={state.deleteConversation} />}
 	/>;
 }

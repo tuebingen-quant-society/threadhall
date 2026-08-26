@@ -62,4 +62,14 @@ describe("WorkspaceShell desktop panes", () => {
 		expect(screen.getByLabelText("Conversation navigation").hasAttribute("inert")).toBe(false);
 		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).not.toBe("true");
 	});
+
+	it("collapses the details pane to a narrow restore control", () => {
+		Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: media(false) });
+		render(<WorkspaceShell navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Members</span>} />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
+		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).toBe("true");
+		fireEvent.click(screen.getByRole("button", { name: "Show details" }));
+		expect(screen.getByText("Members")).toBeTruthy();
+	});
 });

@@ -109,6 +109,11 @@ type recordingRepository struct {
 	threads   ListThreads
 }
 
+func (r *recordingRepository) MarkThreadRead(_ context.Context, _, _, _ int64, _ time.Time) error {
+	return nil
+}
+func (r *recordingRepository) DeleteThread(_ context.Context, _, _, _ int64) error { return nil }
+
 func (r *recordingRepository) Send(_ context.Context, record SendRecord) (Result, error) {
 	r.sendCalls++
 	r.sent = record

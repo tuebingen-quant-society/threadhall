@@ -36,11 +36,32 @@ describe("ApiClient", () => {
 		const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({ id: 7, kind: "channel", name: "research", created_by: 1, created_at: "2026-08-25T12:00:00Z" }, 201)));
 		const api = new ApiClient(fetcher);
 
-		await api.createChannel("private", "research", "channel-key");
+		await api.createChannel("private", "research", "channel-key", [2, 3]);
 		await api.createDM(42, "dm-key");
 
-		expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ kind: "private", name: "research", idempotency_key: "channel-key" });
+		expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ kind: "private", name: "research", member_ids: [2, 3], idempotency_key: "channel-key" });
 		expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ kind: "dm", other_user_id: 42, idempotency_key: "dm-key" });
+	});
+
+	it("deletes channels and threads, advances read positions, and uploads an avatar", async () => {
+		const fetcher = vi.fn().mockResolvedValue(response(undefined, 204));
+		const api = new ApiClient(fetcher);
+		const avatar = new File([new Uint8Array([1, 2, 3])], "avatar.png", { type: "image/png" });
+
+		await api.deleteConversation(7);
+		await api.markConversationRead(7);
+		await api.deleteThread(7, 9);
+		await api.markThreadRead(7, 9);
+		await api.setAvatar(avatar);
+		await api.deleteAvatar();
+
+		expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
+			"/api/v1/conversations/7", "/api/v1/conversations/7/read",
+			"/api/v1/conversations/7/threads/9", "/api/v1/conversations/7/threads/9/read",
+			"/api/v1/profile/avatar", "/api/v1/profile/avatar",
+		]);
+		expect(fetcher.mock.calls[4][1].headers["Content-Type"]).toBe("image/png");
+		expect(fetcher.mock.calls[4][1].body).toBe(avatar);
 	});
 
 	it("maps stable server problems and message edits/deletes", async () => {
