@@ -1,11 +1,14 @@
 import type { Conversation, Member } from "../../api/types";
 import { conversationLabel } from "./list";
 
-export function ConversationDetail({ conversation, members, loading, error }: {
+export function ConversationDetail({ conversation, members, loading, loadingMoreMembers, error, hasMoreMembers, onLoadMoreMembers }: {
 	conversation: Conversation | null;
 	members: Member[];
 	loading?: boolean;
+	loadingMoreMembers?: boolean;
 	error?: string;
+	hasMoreMembers?: boolean;
+	onLoadMoreMembers?: () => void;
 }) {
 	return (
 		<div class="detail-pane-inner">
@@ -19,6 +22,7 @@ export function ConversationDetail({ conversation, members, loading, error }: {
 			{loading && <p class="muted">Loading details…</p>}
 			{error && <p class="inline-error" role="alert">{error}</p>}
 			<ul class="member-list">{members.map((member) => <li key={member.user_id}><span class="member-mark" aria-hidden="true">{member.username.slice(0, 1).toUpperCase()}</span><span><strong>{member.username}</strong><small>User {member.user_id}</small></span></li>)}</ul>
+			{hasMoreMembers && <button class="load-more-members" type="button" disabled={loadingMoreMembers} onClick={onLoadMoreMembers}>{loadingMoreMembers ? "Loading…" : "Load more members"}</button>}
 		</div>
 	);
 }

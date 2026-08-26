@@ -52,7 +52,8 @@ export class ApiClient {
 		if (method !== "GET" && method !== "HEAD") headers["X-CSRF-Token"] = csrfToken();
 		let response: Response;
 		try {
-			response = await this.fetcher(`${API_ROOT}${path}`, {
+			const fetcher = this.fetcher;
+			response = await fetcher(`${API_ROOT}${path}`, {
 				...init,
 				credentials: "same-origin",
 				headers: { ...headers, ...(init.headers as Record<string, string> | undefined) },
@@ -82,14 +83,16 @@ export class ApiClient {
 	}
 	logout(signal?: AbortSignal) { return this.request<void>("/session", { method: "DELETE" }, signal); }
 
-	listConversations(signal?: AbortSignal) {
-		return this.request<ConversationPage>("/conversations?limit=100", {}, signal);
+	listConversations(signal?: AbortSignal, beforeId?: number) {
+		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;
+		return this.request<ConversationPage>(`/conversations?limit=100${before}`, {}, signal);
 	}
 	conversation(id: number, signal?: AbortSignal) {
 		return this.request<Conversation>(`/conversations/${id}`, {}, signal);
 	}
-	members(id: number, signal?: AbortSignal) {
-		return this.request<MemberPage>(`/conversations/${id}/members?limit=100`, {}, signal);
+	members(id: number, signal?: AbortSignal, beforeId?: number) {
+		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;
+		return this.request<MemberPage>(`/conversations/${id}/members?limit=100${before}`, {}, signal);
 	}
 	createChannel(kind: Exclude<ConversationKind, "dm">, name: string, key: string, signal?: AbortSignal) {
 		return this.request<Conversation>("/conversations", {

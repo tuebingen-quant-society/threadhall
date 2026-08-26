@@ -72,6 +72,7 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .conversation-link:hover { background: rgba(255, 255, 255, .055); color: white; }
 .conversation-link.selected { background: rgba(188, 72, 47, .17); color: white; }
 .conversation-link.selected > span:first-child { color: #e16a4f; }
+.load-more-nav { width: 100%; margin-top: .7rem; padding: .65rem; border: 0; border-top: 1px solid rgba(255, 255, 255, .12); background: transparent; color: #aaa79f; text-align: left; font-size: .75rem; }
 
 .conversation-main { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--paper); }
 .conversation-header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.8rem; border-bottom: 1px solid var(--line); }
@@ -128,6 +129,7 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .member-list strong, .member-list small { display: block; }
 .member-list strong { font-size: .8rem; }
 .member-list small { margin-top: .12rem; color: var(--ink-muted); font-size: .65rem; }
+.load-more-members { width: 100%; padding: .65rem 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--accent); text-align: left; font-size: .75rem; }
 
 @media (max-width: 980px) {
 	.workspace-shell { grid-template-columns: 232px minmax(340px, 1fr); }

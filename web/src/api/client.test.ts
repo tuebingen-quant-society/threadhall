@@ -61,4 +61,27 @@ describe("ApiClient", () => {
 		expect(fetcher.mock.calls[1][1].method).toBe("PATCH");
 		expect(fetcher.mock.calls[2][1].method).toBe("DELETE");
 	});
+
+	it("preserves conversation and member pagination cursors", async () => {
+		const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({ conversations: [], members: [] })));
+		const api = new ApiClient(fetcher);
+
+		await api.listConversations(undefined, 80);
+		await api.members(7, undefined, 40);
+
+		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/conversations?limit=100&before_id=80");
+		expect(fetcher.mock.calls[1][0]).toBe("/api/v1/conversations/7/members?limit=100&before_id=40");
+	});
+
+	it("invokes the fetch implementation without an ApiClient receiver", async () => {
+		const receivers: unknown[] = [];
+		const fetcher = function (this: unknown) {
+			receivers.push(this);
+			return Promise.resolve(response({ user: { id: 1 } }));
+		};
+
+		await new ApiClient(fetcher).getSession();
+
+		expect(receivers).toEqual([undefined]);
+	});
 });

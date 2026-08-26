@@ -14,11 +14,14 @@ interface ConversationListProps {
 	conversations: Conversation[];
 	selectedId?: number;
 	loading?: boolean;
+	loadingMore?: boolean;
 	error?: string;
+	hasMore?: boolean;
+	onLoadMore?: () => void;
 	onSelect: (conversation: Conversation) => void;
 }
 
-export function ConversationList({ conversations, selectedId, loading, error, onSelect }: ConversationListProps) {
+export function ConversationList({ conversations, selectedId, loading, loadingMore, error, hasMore, onLoadMore, onSelect }: ConversationListProps) {
 	return (
 		<nav class="conversation-list" aria-label="Conversations">
 			<div class="nav-heading"><span>Conversations</span><small>{conversations.length}</small></div>
@@ -38,6 +41,7 @@ export function ConversationList({ conversations, selectedId, loading, error, on
 					<span>{conversationLabel(conversation)}</span>
 				</button>
 			))}
+			{hasMore && <button class="load-more-nav" type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Loading…" : "Load more conversations"}</button>}
 		</nav>
 	);
 }

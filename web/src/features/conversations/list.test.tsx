@@ -17,4 +17,12 @@ describe("ConversationList", () => {
 		expect(select).toHaveBeenCalledWith(conversations[0]);
 		expect(screen.getByRole("button", { name: "Direct message 1" }).getAttribute("aria-current")).toBe("page");
 	});
+
+	it("exposes accessible conversation pagination", () => {
+		const loadMore = vi.fn();
+		render(<ConversationList conversations={conversations} onSelect={vi.fn()} hasMore onLoadMore={loadMore} />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Load more conversations" }));
+		expect(loadMore).toHaveBeenCalledTimes(1);
+	});
 });

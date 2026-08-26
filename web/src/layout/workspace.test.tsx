@@ -1,17 +1,65 @@
 import { fireEvent, render, screen } from "@testing-library/preact";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceShell } from "./workspace";
 
-describe("WorkspaceShell", () => {
-	it("tracks mobile navigation and context drawer state accessibly", () => {
+function media(matches: boolean) {
+	return vi.fn().mockImplementation((query: string) => ({
+		matches, media: query, onchange: null,
+		addEventListener: vi.fn(), removeEventListener: vi.fn(),
+		addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+	}));
+}
+
+describe("WorkspaceShell mobile drawers", () => {
+	beforeEach(() => Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: media(true) }));
+
+	it("makes closed drawers inert and traps focus until Escape restores the opener", () => {
+		render(<WorkspaceShell navigation={<><button>First channel</button><button>Last channel</button></>} main={<button>Main action</button>} context={<button>Member action</button>} />);
+		const navigation = screen.getByLabelText("Conversation navigation");
+		const opener = screen.getByRole("button", { name: "Open conversations" });
+
+		expect(navigation.getAttribute("aria-hidden")).toBe("true");
+		expect(navigation.hasAttribute("inert")).toBe(true);
+		opener.focus();
+		fireEvent.click(opener);
+		expect(navigation.getAttribute("aria-hidden")).toBe("false");
+		expect(screen.getByRole("button", { name: "Close conversations" })).toBe(document.activeElement);
+
+		screen.getByRole("button", { name: "Last channel" }).focus();
+		fireEvent.keyDown(document, { key: "Tab" });
+		expect(screen.getByRole("button", { name: "Close conversations" })).toBe(document.activeElement);
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(opener).toBe(document.activeElement);
+		expect(navigation.hasAttribute("inert")).toBe(true);
+	});
+
+	it("closes navigation on selection and moves focus into the main workspace", () => {
+		const view = render(<WorkspaceShell navigation={<button>Channel</button>} main={<span>Timeline</span>} context={<span>Members</span>} />);
+		fireEvent.click(screen.getByRole("button", { name: "Open conversations" }));
+		view.rerender(<WorkspaceShell selectionKey={2} navigation={<button>Channel</button>} main={<span>Timeline</span>} context={<span>Members</span>} />);
+
+		expect(screen.getByLabelText("Conversation workspace")).toBe(document.activeElement);
+		expect(screen.getByLabelText("Conversation navigation").getAttribute("aria-hidden")).toBe("true");
+	});
+
+	it("traps the context drawer and restores its own opener", () => {
+		render(<WorkspaceShell navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<button>Member action</button>} />);
+		const opener = screen.getByRole("button", { name: "Open conversation details" });
+		opener.focus();
+		fireEvent.click(opener);
+		expect(screen.getByRole("button", { name: "Close conversation details" })).toBe(document.activeElement);
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(opener).toBe(document.activeElement);
+	});
+});
+
+describe("WorkspaceShell desktop panes", () => {
+	it("keeps desktop panes available", () => {
+		Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: media(false) });
 		render(<WorkspaceShell navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Members</span>} />);
 
-		fireEvent.click(screen.getByRole("button", { name: "Open conversations" }));
-		expect(screen.getByLabelText("Conversation navigation").classList.contains("is-open")).toBe(true);
-		fireEvent.click(screen.getByRole("button", { name: "Close conversations" }));
-		expect(screen.getByLabelText("Conversation navigation").classList.contains("is-open")).toBe(false);
-		fireEvent.click(screen.getByRole("button", { name: "Open conversation details" }));
-		expect(screen.getByLabelText("Conversation details").classList.contains("is-open")).toBe(true);
+		expect(screen.getByLabelText("Conversation navigation").hasAttribute("inert")).toBe(false);
+		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).not.toBe("true");
 	});
 });

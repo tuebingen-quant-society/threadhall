@@ -42,7 +42,7 @@ export interface RealtimeEvent {
 	type: string;
 	conversation_id: number;
 	entity_id: number;
-	payload: Record<string, unknown>;
+	payload: unknown;
 }
 
 export interface MessageResult {
@@ -71,4 +71,4 @@ export interface ProblemShape {
 	detail: string;
 }
 
-export type ConnectionState = "connecting" | "connected" | "reconnecting" | "resyncing" | "offline";
+export type ConnectionState = "connecting" | "connected" | "reconnecting" | "resyncing" | "error" | "offline";

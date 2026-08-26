@@ -8,47 +8,114 @@ interface WorkspaceShellProps {
 	selectionKey?: number;
 }
 
+function useMedia(query: string) {
+	const get = () => typeof matchMedia === "function" && matchMedia(query).matches;
+	const [matches, setMatches] = useState(get);
+	useEffect(() => {
+		const media = matchMedia(query);
+		const change = () => setMatches(media.matches);
+		media.addEventListener("change", change);
+		change();
+		return () => media.removeEventListener("change", change);
+	}, [query]);
+	return matches;
+}
+
+function focusable(panel: HTMLElement) {
+	return [...panel.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+}
+
 export function WorkspaceShell({ navigation, main, context, selectionKey }: WorkspaceShellProps) {
+	const compact = useMedia("(max-width: 700px)");
+	const contextDrawer = useMedia("(max-width: 980px)");
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const [contextOpen, setContextOpen] = useState(false);
-	const navigationClose = useRef<HTMLButtonElement>(null);
-	const contextClose = useRef<HTMLButtonElement>(null);
+	const navigationPanel = useRef<HTMLElement>(null);
+	const contextPanel = useRef<HTMLElement>(null);
+	const navigationOpener = useRef<HTMLButtonElement>(null);
+	const contextOpener = useRef<HTMLButtonElement>(null);
+	const mainPanel = useRef<HTMLElement>(null);
+	const previousSelection = useRef(selectionKey);
 
-	useEffect(() => setNavigationOpen(false), [selectionKey]);
+	const activePanel = compact && navigationOpen ? navigationPanel.current
+		: contextDrawer && contextOpen ? contextPanel.current : null;
+
 	useEffect(() => {
-		if (navigationOpen) navigationClose.current?.focus();
+		if (!compact) setNavigationOpen(false);
+	}, [compact]);
+	useEffect(() => {
+		if (!contextDrawer) setContextOpen(false);
+	}, [contextDrawer]);
+	useEffect(() => {
+		if (previousSelection.current !== selectionKey && compact && navigationOpen) {
+			setNavigationOpen(false);
+			mainPanel.current?.focus();
+		}
+		previousSelection.current = selectionKey;
+	}, [compact, navigationOpen, selectionKey]);
+	useEffect(() => {
+		if (navigationOpen) focusable(navigationPanel.current!)[0]?.focus();
 	}, [navigationOpen]);
 	useEffect(() => {
-		if (contextOpen) contextClose.current?.focus();
+		if (contextOpen) focusable(contextPanel.current!)[0]?.focus();
 	}, [contextOpen]);
 
-	function openNavigation() {
+	useEffect(() => {
+		if (activePanel === null) return;
+		function keyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				if (navigationOpen) {
+					setNavigationOpen(false);
+					navigationOpener.current?.focus();
+				} else {
+					setContextOpen(false);
+					contextOpener.current?.focus();
+				}
+				return;
+			}
+			if (event.key !== "Tab") return;
+			const items = focusable(activePanel!);
+			if (items.length === 0) return;
+			const first = items[0], last = items[items.length - 1];
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault(); last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault(); first.focus();
+			}
+		}
+		document.addEventListener("keydown", keyDown);
+		return () => document.removeEventListener("keydown", keyDown);
+	}, [activePanel, contextOpen, navigationOpen]);
+
+	function closeDrawers(restore: "navigation" | "context" | null) {
+		setNavigationOpen(false);
 		setContextOpen(false);
-		setNavigationOpen(true);
+		if (restore === "navigation") navigationOpener.current?.focus();
+		if (restore === "context") contextOpener.current?.focus();
 	}
 
-	function openContext() {
-		setNavigationOpen(false);
-		setContextOpen(true);
-	}
+	const navigationHidden = compact && !navigationOpen;
+	const contextHidden = contextDrawer && !contextOpen;
+	const drawerOpen = (compact && navigationOpen) || (contextDrawer && contextOpen);
 
 	return (
 		<div class="workspace-shell">
 			<div class="mobile-toolbar">
-				<button type="button" aria-label="Open conversations" aria-expanded={navigationOpen} onClick={openNavigation}>Conversations</button>
+				<button ref={navigationOpener} type="button" aria-label="Open conversations" aria-expanded={navigationOpen} onClick={() => { setContextOpen(false); setNavigationOpen(true); }}>Conversations</button>
 				<span>Threadhall</span>
-				<button type="button" aria-label="Open conversation details" aria-expanded={contextOpen} onClick={openContext}>Details</button>
+				<button ref={contextOpener} type="button" aria-label="Open conversation details" aria-expanded={contextOpen} onClick={() => { setNavigationOpen(false); setContextOpen(true); }}>Details</button>
 			</div>
-			<aside class={navigationOpen ? "navigation-pane is-open" : "navigation-pane"} aria-label="Conversation navigation">
-				<button ref={navigationClose} class="drawer-close" type="button" aria-label="Close conversations" onClick={() => setNavigationOpen(false)}>Close</button>
+			<aside ref={navigationPanel} class={navigationOpen ? "navigation-pane is-open" : "navigation-pane"} aria-label="Conversation navigation" aria-hidden={navigationHidden} inert={navigationHidden || undefined} role={compact ? "dialog" : undefined}>
+				<button class="drawer-close" type="button" aria-label="Close conversations" onClick={() => closeDrawers("navigation")}>Close</button>
 				{navigation}
 			</aside>
-			<main class="conversation-pane">{main}</main>
-			<aside class={contextOpen ? "context-pane is-open" : "context-pane"} aria-label="Conversation details">
-				<button ref={contextClose} class="drawer-close" type="button" aria-label="Close conversation details" onClick={() => setContextOpen(false)}>Close</button>
+			<main ref={mainPanel} class="conversation-pane" aria-label="Conversation workspace" tabIndex={-1} inert={drawerOpen || undefined}>{main}</main>
+			<aside ref={contextPanel} class={contextOpen ? "context-pane is-open" : "context-pane"} aria-label="Conversation details" aria-hidden={contextHidden} inert={contextHidden || undefined} role={contextDrawer ? "dialog" : undefined}>
+				<button class="drawer-close" type="button" aria-label="Close conversation details" onClick={() => closeDrawers("context")}>Close</button>
 				{context}
 			</aside>
-			{(navigationOpen || contextOpen) && <button class="drawer-backdrop" type="button" aria-label="Close open drawer" onClick={() => { setNavigationOpen(false); setContextOpen(false); }} />}
+			{drawerOpen && <button class="drawer-backdrop" type="button" aria-label="Close open drawer" onClick={() => closeDrawers(navigationOpen ? "navigation" : "context")} />}
 		</div>
 	);
 }
