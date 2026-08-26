@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the deployable text-chat slice with one-level threads, reactions, unread state, authorized FTS5 search, streaming media, and resilient responsive PWA behavior.
+**Goal:** Extend the deployable text-chat slice with one-level threads, explicit channel forks, reactions, unread state, authorized FTS5 search, streaming media, and resilient responsive PWA behavior.
 
 **Architecture:** Collaboration features remain mutations through the bounded SQLite writer. Media bytes stream to content-addressed local storage while SQLite holds authorization metadata. The web client derives UI state from authoritative HTTP data plus ordered events.
 
@@ -14,19 +14,22 @@
 
 - Threads are one-level child streams, effectively message-scoped subchannels: every reply
   references the root, replies cannot become roots, and channels do not nest recursively.
+- Forks are real new conversations with independent membership and agent grants. They retain an
+  authorization-checked source edge rather than duplicating conversation data.
 - Search, attachments, unreads, and events must apply membership authorization in storage queries.
 - Stream uploads without buffering full files; use sniffed MIME types and generated paths only.
 - Do not add transcoding, unfurls, offline writes, read receipts, or custom emoji.
 
 ---
 
-### Task 1: Add threads and reactions
+### Task 1: Add threads, channel forks, and reactions
 
-**Files:** Modify `internal/message/model.go`, `store.go`, `service.go`, SQLite message store and HTTP handlers; create/extend colocated tests; create `web/src/features/threads/panel.tsx`, `features/reactions/bar.tsx`, and tests; add `migrations/004_threads_reactions.sql`.
+**Files:** Modify `internal/message/model.go`, `internal/conversation/model.go`, their stores/services and HTTP handlers; create/extend colocated tests; create `web/src/features/threads/panel.tsx`, `features/conversations/fork.tsx`, `features/reactions/bar.tsx`, and tests; add `migrations/004_threads_forks_reactions.sql`.
 
-- [ ] Add failing tests for root replies, rejection of nested replies/cross-conversation roots, unique user/emoji reactions, toggling, tombstoned roots, and unauthorized thread reads.
+- [ ] Add failing tests for root replies, rejection of nested replies/cross-conversation roots, fork creation from a root or thread, independent fork membership/grants, authorized source backlinks, unique user/emoji reactions, toggling, tombstoned roots, and unauthorized thread/fork reads.
 - [ ] Extend message commands with `ThreadRootID *int64` and define `Reaction { MessageID, UserID int64; Emoji string }`; allow only a small server-owned Unicode emoji set in v0.1.
-- [ ] Implement transactional reply/reaction mutations and durable events, then HTTP endpoints and accessible UI controls.
+- [ ] Define `ConversationFork { ConversationID, SourceConversationID, SourceRootMessageID int64 }`; create the target conversation and source edge atomically without copying message bodies.
+- [ ] Implement transactional reply/fork/reaction mutations and durable events, then HTTP endpoints and accessible UI controls.
 - [ ] Run `go test -race ./internal/message ./internal/store/sqlite ./internal/httpapi` and `npm --prefix web test -- --run`; expect success.
 - [ ] Commit with `feat(messages): add threads and reactions`.
 

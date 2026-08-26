@@ -11,7 +11,7 @@ License: AGPL-3.0
 ## Product Definition
 
 Threadhall is a tiny self-hosted team chat for humans and agents. It provides the useful
-information model of Slack—channels, direct messages, one-level threads, search, files,
+information model of Slack—channels, direct messages, one-level threads, channel forks, search, files,
 reactions, and unread state—without enterprise surface area or a distributed runtime.
 Agents join as first-class team members, receive explicit channel and repository grants,
 and work through visible, interruptible, approval-gated tasks.
@@ -19,6 +19,13 @@ and work through visible, interruptible, approval-gated tasks.
 A thread is a lightweight child stream—effectively a message-scoped subchannel—anchored
 to one root message. Thread replies cannot create further nested streams, and channels do
 not form an arbitrary hierarchy.
+
+A fork is different: it creates a real conversation from a message or whole thread. The new
+conversation has independent membership, unread state, files, and agent grants, while a durable
+`conversation_forks` edge records the source conversation and root message. Threadhall renders
+authorized source context through that reference instead of copying message bodies, avoiding
+divergent edits, deletions, retention, and export records. Users who cannot read the source see
+only that the conversation was forked, not its protected content.
 
 The public repository will be `tuebingen-quant-society/threadhall`. The product is a
 standalone open-source project stewarded by TQS rather than a TQS-branded internal tool.
@@ -128,11 +135,15 @@ supported. Message edits preserve the identifier and set `edited_at`. Deletion l
 tombstone so ordering and replies remain stable. User/conversation membership stores one
 monotonically increasing read cursor; Threadhall does not write a receipt per message.
 
+Forks create a new named public or private conversation plus one immutable source edge in the
+same transaction. A fork never silently inherits members or agent grants. Its source reference
+is resolved only after authorization against both conversations; source messages are not copied.
+
 Core tables are:
 
 ```text
 users, sessions
-conversations, conversation_members
+conversations, conversation_members, conversation_forks
 messages, attachments, reactions
 agent_identities, agent_channel_grants
 agent_tasks, agent_sessions, agent_task_events, agent_interactions
@@ -287,7 +298,8 @@ and arm64 artifacts.
 ## Acceptance Story
 
 On a clean low-cost VPS, an administrator installs Threadhall, creates an invite, and two users
-join from separate browsers. They exchange ordered messages, open a thread, react, upload an
+join from separate browsers. They exchange ordered messages, open a thread, fork it into a new
+channel, react, upload an
 image, disconnect, reconnect without gaps, and search only authorized history. One user mentions
 a remotely connected Codex agent. The agent works in an isolated repository worktree, displays
 bounded progress, asks a structured question in a native card, resumes from the authenticated
