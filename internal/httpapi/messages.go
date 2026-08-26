@@ -18,6 +18,7 @@ type MessageAPI interface {
 	Threads(context.Context, message.ListThreads) (message.ThreadList, error)
 	MarkThreadRead(context.Context, message.MarkThreadRead) error
 	DeleteThread(context.Context, message.DeleteThread) error
+	RenameThread(context.Context, message.RenameThread) (message.ThreadRenameResult, error)
 }
 
 type messageHandler struct {
@@ -47,8 +48,35 @@ func RegisterMessages(
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/threads", read(preflightMessageThreadList, handler.threads))
 	mux.Handle("PUT /api/v1/conversations/{conversation_id}/threads/{root_message_id}/read", mutation(preflightMessageThreadMutation, handler.markThreadRead))
 	mux.Handle("DELETE /api/v1/conversations/{conversation_id}/threads/{root_message_id}", mutation(preflightMessageThreadMutation, handler.deleteThread))
+	mux.Handle("PATCH /api/v1/conversations/{conversation_id}/threads/{root_message_id}", mutation(preflightMessageThreadMutation, handler.renameThread))
 	mux.Handle("PATCH /api/v1/messages/{message_id}", mutation(preflightMessageEdit, handler.edit))
 	mux.Handle("DELETE /api/v1/messages/{message_id}", mutation(preflightMessageDelete, handler.delete))
+}
+
+func (h *messageHandler) renameThread(w http.ResponseWriter, request *http.Request) {
+	prepared, ok := preparedMessageFromContext(request.Context())
+	if !ok {
+		writeInternalProblem(w)
+		return
+	}
+	var body struct {
+		Title          string `json:"title"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if decodeMessageJSON(w, request, 1024, &body) != nil {
+		writeInvalidRequest(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	result, err := h.api.RenameThread(request.Context(), message.RenameThread{
+		ActorID: user.ID, ConversationID: prepared.conversationID, RootMessageID: prepared.rootMessageID,
+		Title: body.Title, IdempotencyKey: body.IdempotencyKey,
+	})
+	if writeMessageProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(result.Event.Seq)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *messageHandler) markThreadRead(w http.ResponseWriter, request *http.Request) {

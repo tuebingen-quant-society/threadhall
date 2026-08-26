@@ -67,6 +67,11 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	if deletedThread.Code != http.StatusNoContent || api.deletedThread.ActorID != 4 || api.deletedThread.RootMessageID != 7 {
 		t.Fatalf("delete thread = status %d command %#v", deletedThread.Code, api.deletedThread)
 	}
+	renamedThread := messageJSONMutation(t, handler, http.MethodPatch, "/api/v1/conversations/3/threads/7",
+		map[string]any{"title": "Focused work", "idempotency_key": "rename-thread"}, csrf, true)
+	if renamedThread.Code != http.StatusOK || api.renamedThread.ActorID != 4 || api.renamedThread.RootMessageID != 7 || api.renamedThread.Title != "Focused work" {
+		t.Fatalf("rename thread = status %d command %#v; body=%s", renamedThread.Code, api.renamedThread, renamedThread.Body.String())
+	}
 }
 
 func TestMessageHTTPSignalsCommittedEventWithoutChangingSuccess(t *testing.T) {
@@ -230,6 +235,13 @@ type fakeMessageAPI struct {
 	calls         int
 	markedThread  message.MarkThreadRead
 	deletedThread message.DeleteThread
+	renamedThread message.RenameThread
+}
+
+func (a *fakeMessageAPI) RenameThread(_ context.Context, command message.RenameThread) (message.ThreadRenameResult, error) {
+	a.calls++
+	a.renamedThread = command
+	return message.ThreadRenameResult{Title: command.Title, Event: a.result.Event}, a.err
 }
 
 type recordingNotifier struct {

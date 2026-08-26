@@ -29,6 +29,12 @@ func TestConversationMutationsRequireSessionCSRFAndIdempotencyKeys(t *testing.T)
 	if deleted.Code != http.StatusNoContent || api.deleted.ActorID != 4 || api.deleted.ConversationID != 9 {
 		t.Fatalf("delete = status %d command %#v; body=%s", deleted.Code, api.deleted, deleted.Body.String())
 	}
+	renamed := conversationJSONMutation(t, handler, http.MethodPatch, "/api/v1/conversations/9", map[string]any{
+		"name": "research", "idempotency_key": "rename-research",
+	}, csrf, true)
+	if renamed.Code != http.StatusOK || api.renamed.ActorID != 4 || api.renamed.Name != "research" || api.renamed.IdempotencyKey != "rename-research" {
+		t.Fatalf("rename = status %d command %#v; body=%s", renamed.Code, api.renamed, renamed.Body.String())
+	}
 	read := conversationJSONMutation(t, handler, http.MethodPut, "/api/v1/conversations/9/read", map[string]any{}, csrf, true)
 	if read.Code != http.StatusNoContent || api.read.UserID != 4 || api.read.ConversationID != 9 {
 		t.Fatalf("read = status %d command %#v; body=%s", read.Code, api.read, read.Body.String())
@@ -214,6 +220,12 @@ type fakeConversationAPI struct {
 	createErr error
 	deleted   conversation.DeleteConversation
 	read      conversation.MarkRead
+	renamed   conversation.RenameConversation
+}
+
+func (a *fakeConversationAPI) Rename(_ context.Context, command conversation.RenameConversation) (conversation.Conversation, error) {
+	a.renamed = command
+	return a.created, a.createErr
 }
 
 func (a *fakeConversationAPI) Delete(_ context.Context, command conversation.DeleteConversation) error {

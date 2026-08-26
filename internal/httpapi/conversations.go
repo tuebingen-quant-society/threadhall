@@ -21,6 +21,7 @@ type ConversationAPI interface {
 	AddMember(context.Context, conversation.ChangeMember) error
 	RemoveMember(context.Context, conversation.ChangeMember) error
 	Delete(context.Context, conversation.DeleteConversation) error
+	Rename(context.Context, conversation.RenameConversation) (conversation.Conversation, error)
 	MarkRead(context.Context, conversation.MarkRead) error
 }
 
@@ -62,7 +63,29 @@ func RegisterConversations(
 	mux.Handle("POST /api/v1/conversations/{conversation_id}/members", mutation(handler.addMember))
 	mux.Handle("DELETE /api/v1/conversations/{conversation_id}/members/{user_id}", mutation(handler.removeMember))
 	mux.Handle("DELETE /api/v1/conversations/{conversation_id}", mutation(handler.delete))
+	mux.Handle("PATCH /api/v1/conversations/{conversation_id}", mutation(handler.rename))
 	mux.Handle("PUT /api/v1/conversations/{conversation_id}/read", mutation(handler.markRead))
+}
+
+func (h *conversationHandler) rename(w http.ResponseWriter, request *http.Request) {
+	conversationID, err := positivePathID(request, "conversation_id")
+	var body struct {
+		Name           string `json:"name"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err != nil || decodeAuthJSON(w, request, &body) != nil {
+		writeInvalidRequest(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	renamed, err := h.api.Rename(request.Context(), conversation.RenameConversation{
+		ActorID: user.ID, ConversationID: conversationID, Name: body.Name, IdempotencyKey: body.IdempotencyKey,
+	})
+	if writeConversationProblem(w, err) {
+		return
+	}
+	h.notifier.Notify(0)
+	writeJSON(w, http.StatusOK, renamed)
 }
 
 type createConversationRequest struct {

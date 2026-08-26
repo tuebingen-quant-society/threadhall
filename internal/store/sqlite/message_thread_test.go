@@ -65,6 +65,18 @@ func TestMessageStoreDeletesWholeThreadForRootAuthorOwnerOrAdmin(t *testing.T) {
 	}
 }
 
+func TestMessageStorePersistsSeparateThreadTitle(t *testing.T) {
+	store, _ := newTestMessageStore(t)
+	now := time.Date(2026, 8, 26, 19, 0, 0, 0, time.UTC)
+	seedMessageFixtures(t, store.writer, now, []int64{1, 2}, "owner", "author")
+	root := sendThreadFixture(t, store, message.SendRecord{ConversationID: 1, AuthorID: 2, Body: "Original message", RenderedBody: "<p>Original message</p>", IdempotencyKey: "title-root", CreatedAt: now})
+	sendThreadFixture(t, store, message.SendRecord{ConversationID: 1, AuthorID: 1, ThreadRootID: &root.Message.ID, Body: "reply", RenderedBody: "<p>reply</p>", IdempotencyKey: "title-reply", CreatedAt: now})
+	renamed, err := store.RenameThread(context.Background(), 2, 1, root.Message.ID, "Focused work", "rename-focused", now)
+	if err != nil || renamed.Title != "Focused work" || renamed.Event.Type != "thread.renamed" { t.Fatalf("RenameThread = (%#v, %v)", renamed, err) }
+	threads, err := store.Threads(context.Background(), message.ListThreads{ConversationID: 1, UserID: 1, Limit: 20})
+	if err != nil || len(threads.Threads) != 1 || threads.Threads[0].Title != "Focused work" || threads.Threads[0].Root.Body != "Original message" { t.Fatalf("Threads = (%#v, %v)", threads, err) }
+}
+
 func sendThreadFixture(t *testing.T, store *MessageStore, record message.SendRecord) message.Result {
 	t.Helper()
 	result, err := store.Send(context.Background(), record)

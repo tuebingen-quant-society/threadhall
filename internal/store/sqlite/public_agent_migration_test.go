@@ -15,7 +15,7 @@ func TestOpenBackfillsActiveAgentsIntoExistingPublicChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open version-ten database: %v", err)
 	}
-	for index := 0; index < len(migrations)-1; index++ {
+	for index := 0; index < 10; index++ {
 		script, readErr := migrationFiles.ReadFile(migrations[index])
 		if readErr != nil {
 			t.Fatalf("read migration %d: %v", index+1, readErr)

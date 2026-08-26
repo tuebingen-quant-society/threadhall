@@ -70,6 +70,18 @@ func (s *Service) Delete(ctx context.Context, command DeleteConversation) error 
 	return s.repository.DeleteConversation(ctx, command.ActorID, command.ConversationID)
 }
 
+func (s *Service) Rename(ctx context.Context, command RenameConversation) (Conversation, error) {
+	name := strings.TrimSpace(command.Name)
+	if command.ActorID <= 0 || command.ConversationID <= 0 || name == "" || !utf8.ValidString(name) ||
+		len(name) > maxChannelNameBytes || !validIdempotencyKey(command.IdempotencyKey) {
+		return Conversation{}, ErrInvalidInput
+	}
+	return s.repository.RenameConversation(ctx, RenameRecord{
+		ActorID: command.ActorID, ConversationID: command.ConversationID, Name: name,
+		IdempotencyKey: command.IdempotencyKey, RenamedAt: s.now().UTC(),
+	})
+}
+
 func (s *Service) MarkRead(ctx context.Context, command MarkRead) error {
 	if command.UserID <= 0 || command.ConversationID <= 0 {
 		return ErrInvalidInput

@@ -47,4 +47,5 @@ type Repository interface {
 	Threads(context.Context, ListThreads) (ThreadList, error)
 	MarkThreadRead(context.Context, int64, int64, int64, time.Time) error
 	DeleteThread(context.Context, int64, int64, int64) error
+	RenameThread(context.Context, int64, int64, int64, string, string, time.Time) (ThreadRenameResult, error)
 }

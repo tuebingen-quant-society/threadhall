@@ -42,6 +42,12 @@ type DeleteConversation struct {
 	ActorID, ConversationID int64
 }
 
+// RenameConversation changes a named channel without altering its identity.
+type RenameConversation struct {
+	ActorID, ConversationID int64
+	Name, IdempotencyKey    string
+}
+
 // MarkRead advances the caller's main-channel read position.
 type MarkRead struct {
 	UserID, ConversationID int64

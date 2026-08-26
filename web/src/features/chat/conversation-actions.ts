@@ -34,5 +34,12 @@ export function conversationActions(
 		replace(items, cursor()); select(items[0]?.id);
 	}
 
-	return { create, remove };
+	async function rename(id: number, name: string) {
+		setError("");
+		const renamed = await api.renameConversation(id, name, key("rename-channel"));
+		replace(current().map((item) => item.id === id ? renamed : item), cursor());
+		return renamed;
+	}
+
+	return { create, remove, rename };
 }

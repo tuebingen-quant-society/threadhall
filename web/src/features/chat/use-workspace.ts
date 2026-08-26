@@ -306,5 +306,6 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		editMessage: (message: Message, body: string) => changeMessage("edit", message, body),
 		deleteMessage: (message: Message) => changeMessage("delete", message), createConversation: conversationMutations.create,
 		deleteConversation: () => conversationMutations.remove(scopeRef.current.id), setMutationError,
+		renameConversation: (name: string) => scopeRef.current.id === undefined ? Promise.reject(new Error("No conversation selected")) : conversationMutations.rename(scopeRef.current.id, name),
 	};
 }

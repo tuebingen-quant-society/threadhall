@@ -42,6 +42,22 @@ func TestConversationStoreCreatesNamedChannelsWithCreatorMembership(t *testing.T
 	}
 }
 
+func TestConversationStoreRenamesOwnedChannelIdempotently(t *testing.T) {
+	store, db := newTestConversationStore(t)
+	now := time.Date(2026, 8, 26, 19, 0, 0, 0, time.UTC)
+	seedConversationUsers(t, store.writer, now, "owner", "member")
+	created, err := store.CreateChannel(context.Background(), conversation.ChannelRecord{CreatorID: 1, Kind: conversation.KindPrivate, Name: "before", IdempotencyKey: "create-before", CreatedAt: now})
+	if err != nil { t.Fatal(err) }
+	record := conversation.RenameRecord{ActorID: 1, ConversationID: created.ID, Name: "after", IdempotencyKey: "rename-after", RenamedAt: now}
+	renamed, err := store.RenameConversation(context.Background(), record)
+	if err != nil || renamed.Name != "after" { t.Fatalf("RenameConversation = (%#v, %v)", renamed, err) }
+	replayed, err := store.RenameConversation(context.Background(), record)
+	if err != nil || replayed.Name != "after" { t.Fatalf("replayed rename = (%#v, %v)", replayed, err) }
+	if _, err := store.RenameConversation(context.Background(), conversation.RenameRecord{ActorID: 2, ConversationID: created.ID, Name: "nope", IdempotencyKey: "member-rename", RenamedAt: now}); !errors.Is(err, conversation.ErrForbidden) { t.Fatalf("member rename error = %v", err) }
+	var events int
+	if err := db.QueryRow(`SELECT count(*) FROM events WHERE kind = 'conversation.renamed'`).Scan(&events); err != nil || events != 1 { t.Fatalf("rename events = %d, %v", events, err) }
+}
+
 func TestConversationStoreListsAndOpensOnlyMembershipsWithKeysetBounds(t *testing.T) {
 	store, _ := newTestConversationStore(t)
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)

@@ -39,6 +39,12 @@ type MemberRecord struct {
 	ChangedAt                       time.Time
 }
 
+type RenameRecord struct {
+	ActorID, ConversationID int64
+	Name, IdempotencyKey    string
+	RenamedAt               time.Time
+}
+
 // Repository is the storage-independent conversation persistence port.
 type Repository interface {
 	CreateChannel(context.Context, ChannelRecord) (Conversation, error)
@@ -51,5 +57,6 @@ type Repository interface {
 	AddMember(context.Context, MemberRecord) error
 	RemoveMember(context.Context, MemberRecord) error
 	DeleteConversation(context.Context, int64, int64) error
+	RenameConversation(context.Context, RenameRecord) (Conversation, error)
 	MarkRead(context.Context, int64, int64, time.Time) error
 }

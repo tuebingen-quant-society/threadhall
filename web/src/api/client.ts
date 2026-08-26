@@ -123,6 +123,9 @@ export class ApiClient {
 	deleteConversation(id: number, signal?: AbortSignal) {
 		return this.request<void>(`/conversations/${id}`, { method: "DELETE" }, signal);
 	}
+	renameConversation(id: number, name: string, key: string, signal?: AbortSignal) {
+		return this.request<Conversation>(`/conversations/${id}`, { method: "PATCH", body: JSON.stringify({ name, idempotency_key: key }) }, signal);
+	}
 	markConversationRead(id: number, signal?: AbortSignal) {
 		return this.request<void>(`/conversations/${id}/read`, { method: "PUT" }, signal);
 	}
@@ -140,6 +143,11 @@ export class ApiClient {
 	}
 	deleteThread(conversationId: number, rootMessageId: number, signal?: AbortSignal) {
 		return this.request<void>(`/conversations/${conversationId}/threads/${rootMessageId}`, { method: "DELETE" }, signal);
+	}
+	renameThread(conversationId: number, rootMessageId: number, title: string, key: string, signal?: AbortSignal) {
+		return this.request<{ title: string }>(`/conversations/${conversationId}/threads/${rootMessageId}`, {
+			method: "PATCH", body: JSON.stringify({ title, idempotency_key: key }),
+		}, signal);
 	}
 	markThreadRead(conversationId: number, rootMessageId: number, signal?: AbortSignal) {
 		return this.request<void>(`/conversations/${conversationId}/threads/${rootMessageId}/read`, { method: "PUT" }, signal);

@@ -53,4 +53,10 @@ describe("ConversationList", () => {
 		expect(screen.getByLabelText("5 unread messages").textContent).toBe("5");
 		expect(screen.getByLabelText("2 unread replies").textContent).toBe("2");
 	});
+
+	it("uses a saved thread title without changing its root message", () => {
+		const thread = { root: { id: 7, conversation_id: 2, author_id: 1, body: "Original message", rendered_body: "<p>Original message</p>", created_at: "2026-08-26T10:00:00Z" }, title: "Model review", reply_count: 1 };
+		render(<ConversationList conversations={[conversations[0]]} threadsByConversation={new Map([[2, [thread]]])} onSelect={vi.fn()} />);
+		expect(screen.getByRole("button", { name: "Thread: Model review, 1 reply" })).toBeTruthy();
+	});
 });

@@ -108,6 +108,12 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .conversation-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-title button { width: 30px; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ink-muted); font-size: 1rem; }
 .conversation-title button:hover { color: var(--graphite); }
+.editable-title { min-width: 0; display: flex; align-items: center; gap: .25rem; }
+.editable-title button { opacity: 0; }
+.editable-title:hover button, .editable-title:focus-within button { opacity: 1; }
+.title-editor { min-width: min(22rem, 55vw); }
+.title-editor input { min-height: 36px; padding: .35rem .5rem; font-size: 1rem; font-weight: 620; }
+.title-editor span { display: block; margin-top: .2rem; color: #9b2e20; font-size: .68rem; }
 .connection-status { display: flex; gap: .45rem; align-items: center; color: var(--ink-muted); font-size: .72rem; }
 .connection-status i { width: 7px; height: 7px; border-radius: 50%; background: #9b978e; transition: background .2s ease, transform .2s ease; }
 .connection-status.connected i { background: #5e795c; }

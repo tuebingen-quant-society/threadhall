@@ -14,6 +14,7 @@ import { NotificationPermissionControl } from "./features/notifications/permissi
 import type { Capability, InlineApp, Message, Question, ThreadSummary } from "./api/types";
 import { WorkspaceShell } from "./layout/workspace";
 import { FilePreview } from "./features/messages/file-preview";
+import { EditableTitle } from "./features/conversations/editable-title";
 
 export type { WorkspaceSocketFactory } from "./features/chat/use-workspace";
 
@@ -29,6 +30,8 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 	const memberNames = useMemo(() => new Map(state.members.map((member) => [member.user_id, member.username])), [state.members]);
 	const [threadRoot, setThreadRoot] = useState<(typeof state.timeline.messages)[number]>();
 	const [threadsByConversation, setThreadsByConversation] = useState<Map<number, ThreadSummary[]>>(new Map());
+	const selectedThread = selected && threadRoot ? (threadsByConversation.get(selected.id) ?? []).find((thread) => thread.root.id === threadRoot.id) : undefined;
+	const threadTitle = selectedThread?.title || (threadRoot ? threadRoot.body.trim().replace(/\s+/g, " ").slice(0, 80) : "");
 	const [capabilities, setCapabilities] = useState<Capability[]>([]);
 	const [replyingTo, setReplyingTo] = useState<(typeof state.timeline.messages)[number]>();
 	const [profileOpen, setProfileOpen] = useState(false);
@@ -108,6 +111,15 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 		setFilePreview(app);
 		setFilePreviewRequest((request) => request + 1);
 	}
+	async function renameThread(title: string) {
+		if (!selected || !threadRoot) return;
+		const renamed = await api.renameThread(selected.id, threadRoot.id, title, `rename-thread-${crypto.randomUUID()}`);
+		setThreadsByConversation((current) => {
+			const next = new Map(current);
+			next.set(selected.id, (next.get(selected.id) ?? []).map((thread) => thread.root.id === threadRoot.id ? { ...thread, title: renamed.title } : thread));
+			return next;
+		});
+	}
 
 	return <WorkspaceShell selectionKey={threadRoot ? `thread-${threadRoot.id}` : `conversation-${state.selectionGeneration}`} contextRequestKey={filePreviewRequest || undefined} onContextClose={filePreview ? () => setFilePreview(undefined) : undefined}
 		navigation={<>
@@ -120,7 +132,10 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 				onSelectThread={(conversation, thread) => { setProfileOpen(false); setFilePreview(undefined); if (conversation.id !== state.selectedId) state.select(conversation.id); setThreadRoot(thread.root); }} />
 		</>}
 		main={<div class="conversation-main">
-			<header class="conversation-header"><div class="conversation-title">{threadRoot && selected && <button type="button" aria-label={`Back to ${title}`} onClick={() => setThreadRoot(undefined)}>←</button>}<h2>{threadRoot ? `Thread in ${title}` : selected ? title : "Select a conversation"}</h2></div><span class={`connection-status ${state.connection}`}><i />{connectionLabel(state.connection)}</span></header>
+			<header class="conversation-header"><div class="conversation-title">{threadRoot && selected && <button type="button" aria-label={`Back to ${title}`} onClick={() => setThreadRoot(undefined)}>←</button>}
+				{selected ? <EditableTitle value={threadRoot ? threadTitle : title} canEdit={threadRoot ? user.admin || selected.created_by === user.id || threadRoot.author_id === user.id : selected.kind !== "dm" && (user.admin || selected.created_by === user.id)}
+					label={threadRoot ? "Thread name" : "Channel name"} onSave={threadRoot ? renameThread : state.renameConversation} /> : <h2>Select a conversation</h2>}
+			</div><span class={`connection-status ${state.connection}`}><i />{connectionLabel(state.connection)}</span></header>
 			{state.mutationError && <p class="global-error" role="alert">{state.mutationError}</p>}
 			{selected ? threadRoot
 				? <ThreadView api={api} conversationId={selected.id} root={threadRoot} currentUserId={user.id} memberNames={memberNames} members={state.members} capabilities={capabilities} revision={state.threadRevision}

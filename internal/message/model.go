@@ -91,8 +91,19 @@ type DeleteThread struct {
 	ActorID, ConversationID, RootMessageID int64
 }
 
+type RenameThread struct {
+	ActorID, ConversationID, RootMessageID int64
+	Title, IdempotencyKey                  string
+}
+
+type ThreadRenameResult struct {
+	Title string         `json:"title"`
+	Event realtime.Event `json:"-"`
+}
+
 type ThreadSummary struct {
 	Root        Message `json:"root"`
+	Title       string  `json:"title,omitempty"`
 	ReplyCount  int     `json:"reply_count"`
 	UnreadCount int     `json:"unread_count"`
 }

@@ -113,6 +113,9 @@ func (r *recordingRepository) MarkThreadRead(_ context.Context, _, _, _ int64, _
 	return nil
 }
 func (r *recordingRepository) DeleteThread(_ context.Context, _, _, _ int64) error { return nil }
+func (r *recordingRepository) RenameThread(_ context.Context, _, _, _ int64, title, _ string, _ time.Time) (ThreadRenameResult, error) {
+	return ThreadRenameResult{Title: title}, nil
+}
 
 func (r *recordingRepository) Send(_ context.Context, record SendRecord) (Result, error) {
 	r.sendCalls++

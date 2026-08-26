@@ -76,6 +76,16 @@ func (s *Service) DeleteThread(ctx context.Context, command DeleteThread) error 
 	return s.repository.DeleteThread(ctx, command.ActorID, command.ConversationID, command.RootMessageID)
 }
 
+func (s *Service) RenameThread(ctx context.Context, command RenameThread) (ThreadRenameResult, error) {
+	title := strings.TrimSpace(command.Title)
+	if command.ActorID <= 0 || command.ConversationID <= 0 || command.RootMessageID <= 0 || title == "" ||
+		!utf8.ValidString(title) || len(title) > 80 || !ValidIdempotencyKey(command.IdempotencyKey) {
+		return ThreadRenameResult{}, ErrInvalidInput
+	}
+	return s.repository.RenameThread(ctx, command.ActorID, command.ConversationID, command.RootMessageID,
+		title, command.IdempotencyKey, s.now().UTC())
+}
+
 func (s *Service) Edit(ctx context.Context, command Edit) (Result, error) {
 	if command.MessageID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
 		!ValidIdempotencyKey(command.IdempotencyKey) {

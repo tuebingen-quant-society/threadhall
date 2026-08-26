@@ -64,6 +64,18 @@ describe("ApiClient", () => {
 		expect(fetcher.mock.calls[4][1].body).toBe(avatar);
 	});
 
+	it("renames channels and thread labels with idempotency keys", async () => {
+		const fetcher = vi.fn()
+			.mockResolvedValueOnce(response({ id: 7, kind: "channel", name: "signals" }))
+			.mockResolvedValueOnce(response({ title: "Model review" }));
+		const api = new ApiClient(fetcher);
+		await api.renameConversation(7, "signals", "rename-channel");
+		await api.renameThread(7, 9, "Model review", "rename-thread");
+		expect(fetcher.mock.calls.map(([path]) => path)).toEqual(["/api/v1/conversations/7", "/api/v1/conversations/7/threads/9"]);
+		expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ name: "signals", idempotency_key: "rename-channel" });
+		expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ title: "Model review", idempotency_key: "rename-thread" });
+	});
+
 	it("maps stable server problems and message edits/deletes", async () => {
 		const fetcher = vi.fn()
 			.mockResolvedValueOnce(response({ status: 409, code: "idempotency_conflict", detail: "request conflicts with an earlier operation" }, 409, "application/problem+json"))

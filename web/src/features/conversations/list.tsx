@@ -27,6 +27,7 @@ interface ConversationListProps {
 }
 
 function threadPreview(thread: ThreadSummary) {
+	if (thread.title) return thread.title;
 	if (thread.root.deleted_at) return "Deleted message";
 	const value = thread.root.body.trim().replace(/\s+/g, " ");
 	return value.length > 36 ? `${value.slice(0, 35)}…` : value;

@@ -94,6 +94,7 @@ export interface ThreadPage {
 
 export interface ThreadSummary {
 	root: Message;
+	title?: string;
 	reply_count: number;
 	unread_count?: number;
 }

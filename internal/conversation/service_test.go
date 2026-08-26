@@ -189,6 +189,12 @@ type recordingRepository struct {
 	fork                           ForkRecord
 	deletedID                      int64
 	readAt                         time.Time
+	renamed                        RenameRecord
+}
+
+func (r *recordingRepository) RenameConversation(_ context.Context, record RenameRecord) (Conversation, error) {
+	r.renamed = record
+	return r.created, nil
 }
 
 func (r *recordingRepository) CreateChannel(_ context.Context, record ChannelRecord) (Conversation, error) {
