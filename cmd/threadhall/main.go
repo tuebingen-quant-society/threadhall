@@ -48,6 +48,10 @@ func run(arguments []string, stdin *os.File, stdout io.Writer) error {
 		return serve(arguments[1:])
 	case "bootstrap-admin":
 		return bootstrapAdmin(arguments[1:], stdin, stdout)
+	case "bootstrap-agent":
+		return bootstrapAgent(arguments[1:], stdout)
+	case "set-agent-policy":
+		return setAgentPolicy(arguments[1:])
 	default:
 		return fmt.Errorf("unknown command %q", arguments[0])
 	}
@@ -131,11 +135,13 @@ func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (*ser
 		return nil, fmt.Errorf("start realtime event pump: %w", err)
 	}
 	socket := realtime.NewSocket(hub, realtime.NewReplayer(replayStore, pump))
+	agentStore := store.NewAgentStore(db, writer)
 	handler := app.New(db)
 	httpapi.RegisterAuth(handler, authService, cfg.PublicURL, cfg.SecureCookies)
 	httpapi.RegisterConversations(handler, authService, conversationService, pump, cfg.PublicURL)
 	httpapi.RegisterMessages(handler, authService, messageService, pump, cfg.PublicURL)
 	httpapi.RegisterRealtime(handler, authService, socket, cfg.PublicURL)
+	httpapi.RegisterAgentWorker(handler, agentStore, pump)
 	return &serverHandler{Handler: handler, pump: pump, hub: hub}, nil
 }
 

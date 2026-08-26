@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/tuebingen-quant-society/threadhall/internal/agenttask"
 )
 
 type Service struct {
@@ -33,6 +35,7 @@ func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 		ConversationID: command.ConversationID, AuthorID: command.AuthorID,
 		ThreadRootID: command.ThreadRootID,
 		Body:         command.Body, RenderedBody: rendered, IdempotencyKey: command.IdempotencyKey,
+		Mentions:  agenttask.MentionedAgents(command.Body),
 		CreatedAt: s.now().UTC(),
 	})
 }

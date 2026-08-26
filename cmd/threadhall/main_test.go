@@ -189,6 +189,68 @@ func TestBootstrapAdminReadsPasswordFromStdinAndNeverAFlag(t *testing.T) {
 	}
 }
 
+func TestBootstrapAgentPrintsRawTokenOnceAndStoresOnlyItsHash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "threadhall.db")
+	var output bytes.Buffer
+	if err := run([]string{"bootstrap-admin", "--state-path", path, "--username", "admin"},
+		pipeInput(t, "correct horse battery staple\n"), &output); err != nil {
+		t.Fatalf("bootstrap-admin: %v", err)
+	}
+	db, err := store.Open(path, 1)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO conversations(kind, name, created_by, idempotency_key, created_at)
+		VALUES ('private', 'agents', 1, 'agents', 1);
+		INSERT INTO conversation_members(conversation_id, user_id, joined_at) VALUES (1, 1, 1)`); err != nil {
+		t.Fatalf("seed conversation: %v", err)
+	}
+	_ = db.Close()
+
+	output.Reset()
+	if err := run([]string{"bootstrap-agent", "--state-path", path, "--username", "codex", "--grant-conversation", "1"},
+		emptyInput(t), &output); err != nil {
+		t.Fatalf("bootstrap-agent: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "agent_id=") || !strings.HasPrefix(lines[1], "worker_token=") {
+		t.Fatalf("bootstrap-agent output = %q", output.String())
+	}
+	rawToken := strings.TrimPrefix(lines[1], "worker_token=")
+	db, err = store.Open(path, 1)
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	defer db.Close()
+	var stored []byte
+	var kind string
+	if err := db.QueryRow(`SELECT a.token_hash, u.principal_kind FROM agents a JOIN users u ON u.id = a.user_id
+		WHERE u.username = 'codex'`).Scan(&stored, &kind); err != nil {
+		t.Fatalf("read agent: %v", err)
+	}
+	if kind != "agent" || string(stored) == rawToken || len(stored) != 32 {
+		t.Fatalf("stored agent kind/hash = %q/%x", kind, stored)
+	}
+	var grantCount int
+	if err := db.QueryRow(`SELECT count(*) FROM agent_conversation_grants`).Scan(&grantCount); err != nil || grantCount != 1 {
+		t.Fatalf("grant count = %d, %v", grantCount, err)
+	}
+	_ = db.Close()
+	if err := run([]string{"set-agent-policy", "--state-path", path, "--conversation-id", "1", "--policy", "human_only"},
+		emptyInput(t), &output); err != nil {
+		t.Fatalf("set-agent-policy: %v", err)
+	}
+	db, err = store.Open(path, 1)
+	if err != nil {
+		t.Fatalf("reopen policy database: %v", err)
+	}
+	defer db.Close()
+	var policy string
+	if err := db.QueryRow(`SELECT agent_policy FROM conversations WHERE id = 1`).Scan(&policy); err != nil || policy != "human_only" {
+		t.Fatalf("agent policy = %q, %v", policy, err)
+	}
+}
+
 func TestReadPasswordRejectsMultipleLinesAndOversizedInput(t *testing.T) {
 	for _, input := range []string{
 		"first valid password\nsecond valid password\n",

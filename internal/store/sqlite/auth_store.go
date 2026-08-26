@@ -62,7 +62,7 @@ func (s *AuthStore) Credential(ctx context.Context, username string) (auth.Crede
 	var created int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, username, password_hash, is_admin, created_at
-		FROM users WHERE username = ?`, username).Scan(
+		FROM users WHERE username = ? AND principal_kind = 'human'`, username).Scan(
 		&credential.User.ID, &credential.User.Username, &credential.PasswordHash, &admin, &created,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -149,7 +149,8 @@ func (s *AuthStore) SessionUser(ctx context.Context, tokenHash [32]byte, now tim
 	err := s.db.QueryRowContext(ctx, `
 		SELECT users.id, users.username, users.is_admin, users.created_at
 		FROM sessions JOIN users ON users.id = sessions.user_id
-		WHERE sessions.token_hash = ? AND sessions.expires_at > ?`, tokenHash[:], unix(now)).Scan(
+		WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+		AND users.principal_kind = 'human'`, tokenHash[:], unix(now)).Scan(
 		&user.ID, &user.Username, &user.Admin, &created,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -173,7 +174,7 @@ func (s *AuthStore) SearchUsers(ctx context.Context, requesterID int64, query st
 	pattern := "%" + escapeLike(query) + "%"
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, username FROM users
-		WHERE id <> ? AND username LIKE ? ESCAPE '\' COLLATE NOCASE
+		WHERE id <> ? AND principal_kind = 'human' AND username LIKE ? ESCAPE '\' COLLATE NOCASE
 		ORDER BY username COLLATE NOCASE, id LIMIT ?`, requesterID, pattern, limit)
 	if err != nil {
 		return nil, err

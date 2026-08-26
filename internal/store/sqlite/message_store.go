@@ -75,11 +75,34 @@ func (s *MessageStore) Send(ctx context.Context, record message.SendRecord) (mes
 		if err != nil {
 			return err
 		}
+		if err := queueMentionedAgentTasks(ctx, tx, item, record.Mentions); err != nil {
+			return err
+		}
 		result = message.Result{Message: item, Event: event}
 		return recordMessageMutation(ctx, tx, record.AuthorID, record.IdempotencyKey, "send",
 			fingerprint, result, record.CreatedAt)
 	})
 	return result, err
+}
+
+func queueMentionedAgentTasks(ctx context.Context, tx *sql.Tx, item message.Message, mentions []string) error {
+	for _, username := range mentions {
+		_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO agent_tasks(
+			agent_id, conversation_id, owner_id, invoking_message_id, thread_root_id, state, created_at)
+			SELECT agent.user_id, ?, ?, ?, ?, 'queued', ?
+			FROM users identity JOIN agents agent ON agent.user_id = identity.id
+			JOIN agent_conversation_grants grant_row ON grant_row.agent_id = agent.user_id
+				AND grant_row.conversation_id = ?
+			JOIN conversations c ON c.id = grant_row.conversation_id
+			WHERE identity.username = ? COLLATE NOCASE AND identity.principal_kind = 'agent'
+				AND agent.revoked_at IS NULL AND c.agent_policy = 'explicit'`,
+			item.ConversationID, item.AuthorID, item.ID, nullableInt64(item.ThreadRootID),
+			unix(item.CreatedAt), item.ConversationID, username)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func findMessageMutation(

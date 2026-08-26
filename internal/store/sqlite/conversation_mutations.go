@@ -39,7 +39,7 @@ func (s *ConversationStore) CreateChannel(ctx context.Context, record conversati
 		}
 		result, err := tx.ExecContext(ctx, `
 			INSERT INTO conversations(kind, name, created_by, idempotency_key, created_at)
-			SELECT ?, ?, id, ?, ? FROM users WHERE id = ?`,
+			SELECT ?, ?, id, ?, ? FROM users WHERE id = ? AND principal_kind = 'human'`,
 			record.Kind, record.Name, record.IdempotencyKey, unix(record.CreatedAt), record.CreatorID)
 		if err != nil {
 			return mapConversationConstraint(err)
@@ -98,7 +98,8 @@ func (s *ConversationStore) CreateDM(ctx context.Context, record conversation.DM
 			return legacyErr
 		}
 		var users int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id IN (?, ?)`, record.UserLowID, record.UserHighID).Scan(&users); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users
+			WHERE id IN (?, ?) AND principal_kind = 'human'`, record.UserLowID, record.UserHighID).Scan(&users); err != nil {
 			return err
 		}
 		if users != 2 {
@@ -168,7 +169,8 @@ func (s *ConversationStore) changeMember(ctx context.Context, record conversatio
 	fingerprint := mustFingerprint(record.ConversationID, record.UserID)
 	return s.write(ctx, func(tx *sql.Tx) error {
 		var admin bool
-		err := tx.QueryRowContext(ctx, "SELECT is_admin FROM users WHERE id = ?", record.ActorID).Scan(&admin)
+		err := tx.QueryRowContext(ctx, `SELECT is_admin FROM users
+			WHERE id = ? AND principal_kind = 'human'`, record.ActorID).Scan(&admin)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && !admin) {
 			return conversation.ErrForbidden
 		}
@@ -190,14 +192,13 @@ func (s *ConversationStore) changeMember(ctx context.Context, record conversatio
 		if err := rejectLegacyIdempotency(ctx, tx, record.ActorID, record.IdempotencyKey); err != nil {
 			return err
 		}
-		if add {
-			var userExists bool
-			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)", record.UserID).Scan(&userExists); err != nil {
-				return err
-			}
-			if !userExists {
-				return conversation.ErrNotFound
-			}
+		var humanExists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users
+			WHERE id = ? AND principal_kind = 'human')`, record.UserID).Scan(&humanExists); err != nil {
+			return err
+		}
+		if !humanExists {
+			return conversation.ErrNotFound
 		}
 		var result sql.Result
 		if add {

@@ -51,6 +51,14 @@ func TestServiceBuildsRenderedRecordsAndBoundsHistory(t *testing.T) {
 		!repository.sent.CreatedAt.Equal(now.UTC()) {
 		t.Fatalf("send record = %#v", repository.sent)
 	}
+	if _, err := service.Send(context.Background(), Send{
+		ConversationID: 3, AuthorID: 4, Body: "Ask @Codex, not mail@codex.io", IdempotencyKey: "mention",
+	}); err != nil {
+		t.Fatalf("mention Send: %v", err)
+	}
+	if len(repository.sent.Mentions) != 1 || repository.sent.Mentions[0] != "codex" {
+		t.Fatalf("send mentions = %#v, want [codex]", repository.sent.Mentions)
+	}
 	if _, err := service.Edit(context.Background(), Edit{
 		MessageID: 8, AuthorID: 4, Body: "changed", IdempotencyKey: "edit-1",
 	}); err != nil {

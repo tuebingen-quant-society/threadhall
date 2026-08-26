@@ -230,6 +230,43 @@ func TestConversationStoreLetsOnlyWorkspaceAdminsManageNamedChannelMembers(t *te
 	}
 }
 
+func TestConversationStoreKeepsAgentMembershipUnderGrantAdministration(t *testing.T) {
+	store, db := newTestConversationStore(t)
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	seedConversationUsers(t, store.writer, now, "admin", "creator", "codex")
+	channel, err := store.CreateChannel(context.Background(), conversation.ChannelRecord{
+		CreatorID: 2, Kind: conversation.KindPrivate, Name: "scoped", IdempotencyKey: "scoped", CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateChannel: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE users SET principal_kind = 'agent' WHERE id = 3;
+		INSERT INTO agents(user_id, token_hash, created_by, created_at) VALUES (3, zeroblob(32), 1, ?);
+		INSERT INTO conversation_members(conversation_id, user_id, joined_at) VALUES (?, 3, ?)`,
+		now.Unix(), channel.ID, now.Unix()); err != nil {
+		t.Fatalf("seed agent membership: %v", err)
+	}
+	for _, change := range []struct {
+		name string
+		call func(context.Context, conversation.MemberRecord) error
+	}{
+		{"add", store.AddMember},
+		{"remove", store.RemoveMember},
+	} {
+		err := change.call(context.Background(), conversation.MemberRecord{
+			ActorID: 1, ConversationID: channel.ID, UserID: 3,
+			IdempotencyKey: "agent-" + change.name, ChangedAt: now,
+		})
+		if !errors.Is(err, conversation.ErrNotFound) {
+			t.Fatalf("%s agent membership error = %v, want ErrNotFound", change.name, err)
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM conversation_members WHERE conversation_id = ? AND user_id = 3`, channel.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("agent membership count = %d, %v; want preserved", count, err)
+	}
+}
+
 func newTestConversationStore(t *testing.T) (*ConversationStore, *sql.DB) {
 	t.Helper()
 	db := openTestDB(t)

@@ -18,6 +18,7 @@ type SendRecord struct {
 	ThreadRootID             *int64
 	Body, RenderedBody       string
 	IdempotencyKey           string
+	Mentions                 []string
 	CreatedAt                time.Time
 }
 

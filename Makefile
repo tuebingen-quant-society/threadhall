@@ -13,5 +13,6 @@ web:
 
 build: web
 	go build -tags $(GO_TAGS) -o bin/threadhall ./cmd/threadhall
+	go build -tags $(GO_TAGS) -o bin/threadhall-agentd ./cmd/threadhall-agentd
 
 check: test build

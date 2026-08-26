@@ -24,6 +24,31 @@ func TestAuthStoreBootstrapRefusesSecondAdministrator(t *testing.T) {
 	}
 }
 
+func TestAuthStoreNeverAuthenticatesOrListsAgentPrincipalsAsHumans(t *testing.T) {
+	store, db := newTestAuthStore(t)
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	bootstrapTestAdmin(t, store, now)
+	if _, err := db.Exec(`INSERT INTO users(username, password_hash, is_admin, created_at, principal_kind)
+		VALUES ('codex', 'human-looking-hash', 0, ?, 'agent')`, now.Unix()); err != nil {
+		t.Fatalf("create agent principal: %v", err)
+	}
+	if _, err := store.Credential(context.Background(), "codex"); !errors.Is(err, auth.ErrCredentialNotFound) {
+		t.Fatalf("agent Credential error = %v, want ErrCredentialNotFound", err)
+	}
+	users, err := store.SearchUsers(context.Background(), 1, "codex", 20)
+	if err != nil || len(users) != 0 {
+		t.Fatalf("agent directory results = (%#v, %v), want empty", users, err)
+	}
+	token := sha256.Sum256([]byte("agent session must fail"))
+	if _, err := db.Exec(`INSERT INTO sessions(user_id, token_hash, expires_at, created_at)
+		VALUES (2, ?, ?, ?)`, token[:], now.Add(time.Hour).Unix(), now.Unix()); err != nil {
+		t.Fatalf("create invalid agent session fixture: %v", err)
+	}
+	if _, err := store.SessionUser(context.Background(), token, now); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("agent SessionUser error = %v, want ErrUnauthenticated", err)
+	}
+}
+
 func TestAuthStoreInviteIsSingleUseAndExpires(t *testing.T) {
 	store, db := newTestAuthStore(t)
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
