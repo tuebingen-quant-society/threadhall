@@ -1,25 +1,32 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 
 import { errorDetail } from "../../api/client";
 
 interface ComposerProps {
 	conversationName: string;
-	onSend: (body: string) => Promise<void>;
+	onSend: (body: string, idempotencyKey: string) => Promise<void>;
 }
 
 export function Composer({ conversationName, onSend }: ComposerProps) {
 	const [draft, setDraft] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
+	const attemptKey = useRef<string>();
 
 	async function send() {
 		const body = draft;
 		if (busy || body.trim() === "") return;
+		const idempotencyKey = attemptKey.current ?? `send-${crypto.randomUUID()}`;
+		attemptKey.current = idempotencyKey;
 		setBusy(true);
 		setError("");
 		try {
-			await onSend(body);
-			setDraft((current) => current === body ? "" : current);
+			await onSend(body, idempotencyKey);
+			setDraft((current) => {
+				if (current !== body) return current;
+				attemptKey.current = undefined;
+				return "";
+			});
 		} catch (cause) {
 			setError(errorDetail(cause));
 		} finally {
@@ -41,7 +48,7 @@ export function Composer({ conversationName, onSend }: ComposerProps) {
 				<textarea
 					id="message-composer"
 					value={draft}
-					onInput={(event) => setDraft(event.currentTarget.value)}
+					onInput={(event) => { attemptKey.current = undefined; setDraft(event.currentTarget.value); }}
 					onKeyDown={keyDown}
 					placeholder={`Message ${conversationName}`}
 					maxLength={16_384}

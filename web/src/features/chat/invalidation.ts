@@ -16,7 +16,11 @@ export function createInvalidationCoalescer(refresh: () => Promise<void>): Inval
 		running = true;
 		do {
 			queued = false;
-			try { await refresh(); } catch { /* Refresh owns its visible error state. */ }
+			try { await refresh(); }
+			catch (error) {
+				if (!stopped && error instanceof DOMException && error.name === "AbortError") queued = true;
+				// Non-abort refresh failures already own visible error state.
+			}
 		} while (queued && !stopped);
 		running = false;
 	}

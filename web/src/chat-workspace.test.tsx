@@ -1,62 +1,152 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { fireEvent, screen, waitFor } from "@testing-library/preact";
 import { act } from "preact/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiClient } from "./api/client";
 import type { MessageResult } from "./api/types";
-import { SessionProvider } from "./auth/session";
-import { ChatWorkspace, type WorkspaceSocketFactory } from "./chat-workspace";
-import type { SocketCallbacks } from "./realtime/socket";
-
-const user = { id: 1, username: "ada", admin: true, created_at: "2026-08-25T10:00:00Z" };
-const general = { id: 2, kind: "channel" as const, name: "general", created_by: 1, created_at: "2026-08-25T10:00:00Z" };
-const research = { id: 1, kind: "channel" as const, name: "research", created_by: 1, created_at: "2026-08-25T09:00:00Z" };
-const baseMessage = { id: 5, conversation_id: 2, author_id: 1, body: "general note", rendered_body: "<p>general note</p>", created_at: "2026-08-25T10:05:00Z" };
-const researchMessage = { ...baseMessage, id: 3, conversation_id: 1, body: "research note", rendered_body: "<p>research note</p>" };
-
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	let reject!: (error: unknown) => void;
-	const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-	return { promise, resolve, reject };
-}
-
-function fakeApi(overrides: Record<string, unknown> = {}) {
-	return {
-		getSession: vi.fn().mockResolvedValue({ user, expires_at: "2026-09-25T10:00:00Z" }),
-		logout: vi.fn().mockResolvedValue(undefined),
-		listConversations: vi.fn().mockResolvedValue({ conversations: [general, research] }),
-		conversation: vi.fn((id: number) => Promise.resolve(id === 2 ? general : research)),
-		members: vi.fn().mockResolvedValue({ members: [{ user_id: 1, username: "ada", joined_at: user.created_at }] }),
-		history: vi.fn((id: number) => Promise.resolve({ messages: id === 2 ? [baseMessage] : [researchMessage] })),
-		createChannel: vi.fn(), createDM: vi.fn(),
-		sendMessage: vi.fn(), editMessage: vi.fn(), deleteMessage: vi.fn(),
-		...overrides,
-	} as Record<string, ReturnType<typeof vi.fn>>;
-}
-
-function socketHarness() {
-	let callbacks!: SocketCallbacks;
-	const factory: WorkspaceSocketFactory = (next) => {
-		callbacks = next;
-		return { start: vi.fn(), stop: vi.fn() };
-	};
-	return { factory, get callbacks() { return callbacks; } };
-}
-
-function renderWorkspace(api: ReturnType<typeof fakeApi>, factory: WorkspaceSocketFactory) {
-	const client = api as unknown as ApiClient;
-	return render(<SessionProvider api={client}><ChatWorkspace api={client} socketFactory={factory} /></SessionProvider>);
-}
-
-async function ready() {
-	await screen.findByText("general note");
-}
+import { baseMessage, deferred, fakeApi, general, installMatchMedia, ready, renderWorkspace, research, researchMessage, socketHarness, user } from "./chat-workspace-test-utils";
 
 beforeEach(() => {
-	Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn(() => ({
-		matches: false, media: "", addEventListener: vi.fn(), removeEventListener: vi.fn(),
-	})) });
+	installMatchMedia();
+});
+
+describe("ChatWorkspace history races", () => {
+	it("fills deferred history without replacing newer socket and HTTP entities", async () => {
+		const initial = deferred<{ messages: (typeof baseMessage)[]; next_before_id?: number }>();
+		const socketLive = { ...baseMessage, id: 6, body: "socket live", rendered_body: "<p>socket live</p>" };
+		const httpLive = { ...baseMessage, id: 7, body: "HTTP live", rendered_body: "<p>HTTP live</p>" };
+		const api = fakeApi({
+			history: vi.fn().mockReturnValue(initial.promise),
+			sendMessage: vi.fn().mockResolvedValue({
+				message: httpLive,
+				event: { seq: 9, type: "message.sent", conversation_id: 2, entity_id: 7, payload: {
+					author_id: 1, body: httpLive.body, rendered_body: httpLive.rendered_body, created_at: httpLive.created_at,
+				} },
+			}),
+		});
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await waitFor(() => expect(api.history).toHaveBeenCalled());
+
+		act(() => socket.callbacks.onEvent({
+			seq: 8, type: "message.sent", conversation_id: 2, entity_id: 6,
+			payload: { author_id: 1, body: socketLive.body, rendered_body: socketLive.rendered_body, created_at: socketLive.created_at },
+		}));
+		const composer = await screen.findByLabelText("Message general");
+		fireEvent.input(composer, { target: { value: "HTTP live" } });
+		fireEvent.keyDown(composer, { key: "Enter" });
+		await screen.findByText("HTTP live");
+
+		initial.resolve({ messages: [
+			{ ...socketLive, body: "stale socket", rendered_body: "<p>stale socket</p>" },
+			{ ...httpLive, body: "stale HTTP", rendered_body: "<p>stale HTTP</p>" },
+			{ ...baseMessage, id: 4, body: "older history", rendered_body: "<p>older history</p>" },
+		] });
+
+		await screen.findByText("older history");
+		expect(screen.getByText("socket live")).toBeTruthy();
+		expect(screen.getByText("HTTP live")).toBeTruthy();
+		expect(screen.queryByText("stale socket")).toBeNull();
+		expect(screen.queryByText("stale HTTP")).toBeNull();
+	});
+
+	it("base-merges older history without reverting live entities", async () => {
+		const older = deferred<{ messages: (typeof baseMessage)[] }>();
+		const socketLive = { ...baseMessage, body: "socket edit", rendered_body: "<p>socket edit</p>", edited_at: "2026-08-25T10:08:00Z" };
+		const httpLive = { ...baseMessage, id: 7, body: "HTTP during older", rendered_body: "<p>HTTP during older</p>" };
+		const history = vi.fn((_id: number, _signal: AbortSignal, before?: number) => before === 5
+			? older.promise : Promise.resolve({ messages: [baseMessage], next_before_id: 5 }));
+		const api = fakeApi({
+			history,
+			sendMessage: vi.fn().mockResolvedValue({
+				message: httpLive,
+				event: { seq: 9, type: "message.sent", conversation_id: 2, entity_id: 7, payload: {
+					author_id: 1, body: httpLive.body, rendered_body: httpLive.rendered_body, created_at: httpLive.created_at,
+				} },
+			}),
+		});
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await ready();
+		fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+		await waitFor(() => expect(history).toHaveBeenCalledWith(2, expect.any(AbortSignal), 5));
+
+		act(() => socket.callbacks.onEvent({
+			seq: 8, type: "message.edited", conversation_id: 2, entity_id: 5,
+			payload: { body: socketLive.body, rendered_body: socketLive.rendered_body, edited_at: socketLive.edited_at },
+		}));
+		const composer = screen.getByLabelText("Message general");
+		fireEvent.input(composer, { target: { value: httpLive.body } });
+		fireEvent.keyDown(composer, { key: "Enter" });
+		await screen.findByText(httpLive.body);
+		act(() => older.resolve({ messages: [
+			{ ...baseMessage, body: "stale edit", rendered_body: "<p>stale edit</p>" },
+			{ ...httpLive, body: "stale HTTP", rendered_body: "<p>stale HTTP</p>" },
+			{ ...baseMessage, id: 4, body: "older page", rendered_body: "<p>older page</p>" },
+		] }));
+
+		await screen.findByText("older page");
+		expect(screen.getByText(socketLive.body)).toBeTruthy();
+		expect(screen.getByText(httpLive.body)).toBeTruthy();
+		expect(screen.queryByText("stale edit")).toBeNull();
+		expect(screen.queryByText("stale HTTP")).toBeNull();
+	});
+});
+
+describe("ChatWorkspace send resync races", () => {
+	it("keeps a rejected in-flight send retryable under the same key across resync", async () => {
+		const firstAttempt = deferred<MessageResult>();
+		const committed = { ...baseMessage, id: 8, body: "retry me", rendered_body: "<p>retry me</p>" };
+		const sendMessage = vi.fn().mockReturnValueOnce(firstAttempt.promise).mockResolvedValueOnce({
+			message: committed,
+			event: { seq: 10, type: "message.sent", conversation_id: 2, entity_id: 8, payload: {
+				author_id: 1, body: committed.body, rendered_body: committed.rendered_body, created_at: committed.created_at,
+			} },
+		});
+		const api = fakeApi({ sendMessage });
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await ready();
+
+		const composer = screen.getByLabelText("Message general") as HTMLTextAreaElement;
+		fireEvent.input(composer, { target: { value: "retry me" } });
+		fireEvent.keyDown(composer, { key: "Enter" });
+		await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+		const resync = socket.callbacks.onResync?.();
+		expect(screen.getByText("Sending…")).toBeTruthy();
+		await resync;
+		expect(screen.getByText("Sending…")).toBeTruthy();
+
+		act(() => firstAttempt.reject(new Error("delivery uncertain")));
+		await screen.findByRole("alert");
+		expect(composer.value).toBe("retry me");
+		fireEvent.keyDown(composer, { key: "Enter" });
+		await screen.findByText("retry me");
+
+		expect(sendMessage.mock.calls[1][2]).toBe(sendMessage.mock.calls[0][2]);
+	});
+
+	it("merges a committed in-flight send after authoritative resync", async () => {
+		const attempt = deferred<MessageResult>();
+		const committed = { ...baseMessage, id: 9, body: "committed during resync", rendered_body: "<p>committed during resync</p>" };
+		const api = fakeApi({ sendMessage: vi.fn().mockReturnValue(attempt.promise) });
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await ready();
+
+		const composer = screen.getByLabelText("Message general");
+		fireEvent.input(composer, { target: { value: committed.body } });
+		fireEvent.keyDown(composer, { key: "Enter" });
+		await socket.callbacks.onResync?.();
+		act(() => attempt.resolve({
+			message: committed,
+			event: { seq: 11, type: "message.sent", conversation_id: 2, entity_id: 9, payload: {
+				author_id: 1, body: committed.body, rendered_body: committed.rendered_body, created_at: committed.created_at,
+			} },
+		}));
+
+		await screen.findByText("committed during resync");
+		expect(screen.queryByText("Sending…")).toBeNull();
+	});
 });
 
 describe("ChatWorkspace selection generations", () => {

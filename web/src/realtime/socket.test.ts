@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { TimelineState } from "../features/messages/timeline";
+import { applyRealtimeEvent, mergeMessageResult } from "../features/messages/timeline";
 import { RealtimeSocket } from "./socket";
 
 class FakeSocket {
@@ -33,6 +35,41 @@ describe("RealtimeSocket", () => {
 
 		expect(received).toHaveBeenCalledTimes(1);
 		expect(FakeSocket.instances[1].url).toContain("after_seq=4");
+		socket.stop();
+		vi.useRealTimers();
+	});
+
+	it("advances only from sockets while entity-deduplicating delayed events after HTTP", () => {
+		vi.useFakeTimers();
+		FakeSocket.instances = [];
+		const message = { id: 2, conversation_id: 1, author_id: 4, body: "HTTP edit", rendered_body: "<p>HTTP edit</p>", created_at: "2026-08-25T12:00:00Z", edited_at: "2026-08-25T12:09:00Z" };
+		let timeline: TimelineState = mergeMessageResult({ messages: [], entitySeq: new Map() }, {
+			message,
+			event: { seq: 9, type: "message.edited", conversation_id: 1, entity_id: 2, payload: {} },
+		});
+		const afterHTTP = timeline;
+		const socket = new RealtimeSocket({ onEvent: (event) => { timeline = applyRealtimeEvent(timeline, event); } }, FakeSocket as never);
+		socket.start();
+		FakeSocket.instances[0].open();
+		FakeSocket.instances[0].message({
+			seq: 8, type: "message.sent", conversation_id: 1, entity_id: 2,
+			payload: { author_id: 4, body: "stale", rendered_body: "<p>stale</p>", created_at: message.created_at },
+		});
+		FakeSocket.instances[0].disconnect();
+		vi.advanceTimersByTime(500);
+
+		expect(timeline).toBe(afterHTTP);
+		expect(FakeSocket.instances[1].url).toContain("after_seq=8");
+		FakeSocket.instances[1].open();
+		FakeSocket.instances[1].message({
+			seq: 9, type: "message.edited", conversation_id: 1, entity_id: 2,
+			payload: { body: message.body, rendered_body: message.rendered_body, edited_at: message.edited_at },
+		});
+		FakeSocket.instances[1].disconnect();
+		vi.advanceTimersByTime(500);
+
+		expect(timeline).toBe(afterHTTP);
+		expect(FakeSocket.instances[2].url).toContain("after_seq=9");
 		socket.stop();
 		vi.useRealTimers();
 	});

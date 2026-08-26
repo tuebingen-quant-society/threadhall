@@ -11,7 +11,7 @@
 - `web/src/api/{types,client}.ts`: stable public types and the single credentialed fetch path with CSRF, abort signals, and `ApiProblem` mapping.
 - `web/src/auth/session.tsx`: session bootstrap, visible boot/authentication failures, sign-in, invite redemption, and sign-out.
 - `web/src/realtime/socket.ts`: in-memory socket-only sequence cursor, strict event validation/deduplication, stable-open bounded exponential reconnect, and retrying authoritative resync callback.
-- `web/src/features/chat/{use-workspace,invalidation,load-pages}.ts`: generation-scoped orchestration, coalesced membership/list invalidation, and bounded authoritative pagination reloads.
+- `web/src/features/chat/{use-workspace,invalidation,list-coordinator,load-pages}.ts`: selection/fetch-scoped orchestration, serialized refresh and pagination lanes, coalesced membership invalidation, and bounded authoritative reloads.
 - `web/src/features/conversations/collection.ts`: conversation/member append, deduplication, cursor retention, and explicit 500-item caps.
 - `web/src/features/conversations/{list,create,detail}.tsx`: real conversation navigation, public/private/DM creation, and API-backed detail/member context.
 - `web/src/features/messages/{timeline,composer}.tsx`: bounded chronological history, exact pending-key reconciliation, server-rendered HTML presentation, edit/delete, and keyboard-accessible composition.
@@ -42,7 +42,7 @@
 ## Self-review
 
 - No mock, demo, fallback, client Markdown parser, or speculative feature surface is present. Empty states remain empty and failures stay visible.
-- All mutations use browser-generated idempotency keys. A pending send is keyed once, removed in `finally`, and reconciled only with the exact HTTP result; socket/entity merges cannot add a duplicate message.
+- All mutations use browser-generated idempotency keys. A pending send is keyed once and reconciled only by confirmed HTTP success; uncertain failure preserves the draft, pending row, and exact key for retry, while socket/entity merges cannot add a duplicate message.
 - Socket state retains only the latest global sequence across reconnects. A `resync_required` envelope changes the visible state to `Resyncing`, performs HTTP list/detail/member/history reload, resets the cursor only after that callback, then reopens from zero.
 - Fetch effects own and abort `AbortController`s on selection/session/socket cleanup. Collections are capped at 500 conversations, 500 members, 200 retained timeline messages, and 20 pending sends.
 - Every authored TS/TSX/CSS source is below the requested 300-line soft limit; the largest is 170 lines. `git diff --check` is clean.
@@ -96,3 +96,34 @@
 
 - `npm ci` still reports engine warnings under local Node 23.11 because current Vitest/jsdom packages declare even-numbered supported Node lines; install, tests, builds, and browser validation pass. CI should use Node 22 or 24+ as declared by those packages.
 - No Round 1 work touched the three ledgered minor findings or expanded into threads, reactions, search, media, projects/work items, offline/PWA behavior, or new frameworks/dependencies.
+
+## Fix Round 2 evidence
+
+### RED
+
+- The deferred initial-history regression first failed because the stale HTTP page replaced the already-rendered socket seq 8 and HTTP seq 9 entity states. The focused RED made the same-ID overwrite visible before the initial history setter was changed to a functional base merge.
+- Composer and workspace send/resync REDs showed that an uncertain response lost its retry identity and that authoritative resync aborted/cleared in-flight work. The regressions require the draft, pending row, and exact idempotency key to survive a rejected resync-era attempt, while a committed attempt still reconciles normally.
+- Six focused coordination regressions failed against the shared latest-wins controller: refresh was aborted by pagination, pagination remained visibly `Loading…` after refresh, a stale invalidation was consumed, delayed conversation A could clear selected B, selection change did not reject resync, and resync did not immediately abort the active selection fetch.
+- Adversarial verification added one final RED: a list-level `not_found` incorrectly cleared the selected conversation and resolved resync. The clear path is now limited to an exact, current selected-detail/member refresh; collection reload failures stay visible and reject resync.
+
+### GREEN and verification
+
+- Focused orchestration boundary: 4 files, 28 tests passed. This includes deferred initial and older-history base merges, HTTP entity vs socket cursor separation, send/resync rejected and committed variants, exact-key retry, refresh/pagination ordering in both directions, invalidation retry, delayed A to B scoping, list-vs-selected 404 handling, and stale resync rejection.
+- `npm --prefix web test -- --run`: 12 files, 48 tests passed.
+- `npm --prefix web run build`: passed. Production output is JS 46.57 kB / 15.57 kB gzip, CSS 12.33 kB / 3.47 kB gzip, and HTML 0.39 kB / 0.26 kB gzip. Initial compressed JS remains far below 300 KiB.
+- `make check`: passed after clean `npm ci`; the embedded Vite build, `go test -tags sqlite_fts5 ./...`, all 48 Vitest tests, and tagged Go binary build are green.
+- `git diff --check`: passed. The largest changed implementation file is `web/src/features/chat/use-workspace.ts` at 279 lines; all authored TypeScript/TSX/CSS sources remain below the 300-line soft limit.
+
+### Round 2 implementation review
+
+- Initial, older, and resync history pages now base-merge into the current timeline. Unsequenced HTTP history fills missing IDs only and cannot overwrite a newer socket edit/delete or mutation result; chronological sort, entity deduplication, and the 200-message cap remain intact.
+- Selection identity and fetch identity are separate. A real selection change clears selected state and aborts data/mutations; resync renews only the fetch generation, aborts/replaces selected reads immediately, and preserves mutation controllers, pending sends, composer draft, and idempotency identity.
+- `refreshSelected` rejects stale/aborted work. Authoritative completion applies detail, members, errors, or a 404 clear only while its captured conversation ID, selection generation, fetch generation, and abort signal are current. Changing selection during resync rejects the resync, so the socket cannot reset its cursor as though the reload succeeded.
+- Conversation-list refresh and pagination use separate serialized lanes. Refresh increments an epoch and aborts active pagination; pagination waits for refresh and never aborts it. Each pagination request owns its loading cleanup, while stale invalidations are retained as one queued retry unless the workspace is disposed.
+- Composer creates one send key per unchanged draft. A failed or uncertain request leaves the draft and key available for exact retry; only a confirmed HTTP result clears the draft and reconciles pending state. Authoritative resync does not abort or silently resolve that mutation.
+- The socket regression starts from an HTTP seq 9 entity result, accepts delayed socket seq 8 without entity rollback, reconnects from socket cursor 8, entity-deduplicates the later seq 9 envelope, and then reconnects from cursor 9. HTTP results never advance the replay cursor.
+
+### Scope and concerns
+
+- No CSS/layout code changed in Round 2. The affected composer and loading controls are covered through rendered accessibility/keyboard integration tests, so the prior real Chrome desktop/narrow layout inspection was not repeated or relabeled as new graphical evidence.
+- Clean install still emits the previously recorded Node 23.11 engine warnings; tests, production build, embedded Go tests, and binary build pass. No ledgered minor or out-of-scope feature was touched.
