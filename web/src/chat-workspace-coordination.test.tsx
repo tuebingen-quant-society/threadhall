@@ -96,13 +96,20 @@ describe("ChatWorkspace authoritative selection scope", () => {
 		const initialHistory = deferred<{ messages: (typeof baseMessage)[] }>();
 		const refreshedHistory = deferred<{ messages: (typeof baseMessage)[] }>();
 		const invalidation = deferred<{ conversations: (typeof general | typeof research)[] }>();
+		const refreshedDetail = { ...general, name: "general refreshed" };
+		const grace = { user_id: 2, username: "grace", joined_at: "2026-08-25T11:00:00Z" };
 		let initialSignal: AbortSignal | undefined;
-		const list = vi.fn().mockResolvedValueOnce({ conversations: [general, research] }).mockReturnValueOnce(invalidation.promise);
+		const list = vi.fn().mockResolvedValueOnce({ conversations: [general, research] })
+			.mockReturnValueOnce(invalidation.promise).mockResolvedValue({ conversations: [general, research] });
 		const history = vi.fn((_id: number, signal: AbortSignal) => {
 			if (history.mock.calls.length === 1) { initialSignal = signal; return initialHistory.promise; }
 			return refreshedHistory.promise;
 		});
-		const api = fakeApi({ history, listConversations: list });
+		const conversation = vi.fn(() => Promise.resolve(conversation.mock.calls.length === 3 ? refreshedDetail : general));
+		const members = vi.fn(() => Promise.resolve({ members: members.mock.calls.length === 3
+			? [{ user_id: 1, username: "ada", joined_at: "2026-08-25T10:00:00Z" }, grace]
+			: [{ user_id: 1, username: "ada", joined_at: "2026-08-25T10:00:00Z" }] }));
+		const api = fakeApi({ conversation, history, listConversations: list, members });
 		const socket = socketHarness();
 		renderWorkspace(api, socket.factory);
 		await waitFor(() => expect(history).toHaveBeenCalledTimes(1));
@@ -116,6 +123,23 @@ describe("ChatWorkspace authoritative selection scope", () => {
 
 		await screen.findByText("general note");
 		await waitFor(() => expect(screen.getByLabelText("Message history").getAttribute("aria-busy")).toBe("false"));
+		await act(async () => {
+			initialHistory.resolve({ messages: [{
+				...baseMessage, id: 6, body: "stale original history", rendered_body: "<p>stale original history</p>",
+			}] });
+			await initialHistory.promise;
+			await Promise.resolve();
+		});
+		expect(screen.queryByText("stale original history")).toBeNull();
+		expect(screen.getByText("general note")).toBeTruthy();
+		expect(screen.getByLabelText("Message history").getAttribute("aria-busy")).toBe("false");
+
+		act(() => socket.callbacks.onEvent({ seq: 25, type: "conversation.member_added", conversation_id: 2, entity_id: 2, payload: [2, 2] }));
+		await screen.findByText("general refreshed");
+		await screen.findByText("grace");
+		expect(conversation).toHaveBeenCalledTimes(3);
+		expect(members).toHaveBeenCalledTimes(3);
+		expect(history).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not treat a list-level not-found as a successful selected removal", async () => {

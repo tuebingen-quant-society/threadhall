@@ -147,3 +147,24 @@
 
 - Round 3 changes only the reported initial-history/invalidation orchestration race, its integration regression, the embedded build artifact, and this evidence. No CSS, deferred minor, or out-of-scope feature changed; graphical reinspection was not warranted.
 - Clean install continues to emit the already recorded Node 23.11 engine warnings while installation, tests, builds, and Go embedding checks pass.
+
+## Fix Round 4 evidence
+
+### Evidence result
+
+- The two requested assertions passed on their first focused run against the Round 3 implementation, so Round 4 required no production-code change and exposed no new defect.
+- After replacement history renders and clears `aria-busy`, the test resolves the already-aborted original history promise with a distinct `stale original history` message, waits for that promise chain to settle, and proves the stale message is absent while the replacement message and non-loading state remain unchanged.
+- The same test then emits a later metadata invalidation after history readiness. Rendered conversation detail changes to `general refreshed` and the real member context adds `grace`, proving detail/member refresh completion, while the history request count remains exactly two.
+
+### Verification
+
+- Focused `npm --prefix web test -- --run src/chat-workspace-coordination.test.tsx src/chat-workspace.test.tsx`: 2 files, 20 tests passed.
+- Full `npm --prefix web test -- --run`: 12 files, 49 tests passed.
+- `npm --prefix web run build`: passed with unchanged production output: JS 46.65 kB / 15.60 kB gzip, CSS 12.33 kB / 3.47 kB gzip, and HTML 0.39 kB / 0.26 kB gzip.
+- `make check`: passed after clean `npm ci`; embedded Vite build, `go test -tags sqlite_fts5 ./...`, all 49 Vitest tests, and tagged Go binary build are green.
+- `git diff --check`: passed. The extended coordination test is 215 lines and the unchanged workspace hook is 286 lines, both below the 300-line soft limit.
+
+### Scope
+
+- Round 4 changes only test evidence and this report. No production source, embedded asset, CSS, deferred minor, or out-of-scope feature changed; graphical reinspection was not warranted.
+- Clean install continues to emit the previously recorded Node 23.11 engine warnings while all checks pass.
