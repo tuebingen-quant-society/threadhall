@@ -1,0 +1,16 @@
+[
+  {"version":1,"seq":1,"type":"negotiate","payload":{"minimum":1,"maximum":1,"capabilities":["codex_app_server","questions"]}},
+  {"version":1,"seq":2,"type":"authenticate","payload":{"worker_id":"worker-1","token":"opaque-token"}},
+  {"version":1,"seq":3,"type":"start","payload":{"task_id":"task-1","agent_id":7,"conversation_id":9,"thread_root_id":11,"prompt":"Review this change","context":[{"kind":"message","id":"11","content":"untrusted text"}]}},
+  {"version":1,"seq":4,"type":"steer","payload":{"task_id":"task-1","message":"Focus on the parser"}},
+  {"version":1,"seq":5,"type":"interrupt","payload":{"task_id":"task-1"}},
+  {"version":1,"seq":6,"type":"resume","payload":{"task_id":"task-1","session_id":"session-1"}},
+  {"version":1,"seq":7,"type":"answer","payload":{"task_id":"task-1","interaction_id":"question-1","answers":[{"question_id":"scope","value":["parser"]}]}},
+  {"version":1,"seq":8,"type":"progress","payload":{"task_id":"task-1","phase":"testing","summary":"Running focused tests","percent":80}},
+  {"version":1,"seq":9,"type":"approval","payload":{"task_id":"task-1","interaction_id":"approval-1","action":"network","summary":"Fetch module metadata","digest":"sha256:abc","expires_at":"2026-08-26T11:00:00Z"}},
+  {"version":1,"seq":10,"type":"question","payload":{"task_id":"task-1","interaction_id":"question-1","questions":[{"id":"scope","prompt":"Which scope?","kind":"single","options":[{"id":"parser","label":"Parser"}]}],"expires_at":"2026-08-27T10:00:00Z"}},
+  {"version":1,"seq":11,"type":"artifact","payload":{"task_id":"task-1","artifact_id":"artifact-1","name":"report.txt","media_type":"text/plain","size":120}},
+  {"version":1,"seq":12,"type":"failure","payload":{"task_id":"task-1","code":"runtime_failed","detail":"The agent runtime stopped."}},
+  {"version":1,"seq":13,"type":"usage","payload":{"task_id":"task-1","input_tokens":120,"output_tokens":45}},
+  {"version":1,"seq":14,"type":"heartbeat","payload":{"sent_at":"2026-08-26T10:00:00Z"}}
+]
