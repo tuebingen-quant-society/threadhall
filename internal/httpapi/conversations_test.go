@@ -25,6 +25,12 @@ func TestConversationMutationsRequireSessionCSRFAndIdempotencyKeys(t *testing.T)
 	if valid.Code != http.StatusCreated || api.channel.CreatorID != 4 || api.channel.IdempotencyKey != "create-staff" {
 		t.Fatalf("valid create = status %d command %#v; body=%s", valid.Code, api.channel, valid.Body.String())
 	}
+	forked := conversationJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations/3/forks", map[string]any{
+		"source_message_id": 8, "kind": "private", "name": "follow-up", "idempotency_key": "fork-follow-up",
+	}, csrf, true)
+	if forked.Code != http.StatusCreated || api.fork.ActorID != 4 || api.fork.SourceConversationID != 3 || api.fork.SourceMessageID != 8 {
+		t.Fatalf("fork = status %d command %#v; body=%s", forked.Code, api.fork, forked.Body.String())
+	}
 
 	missingCSRF := conversationJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations", map[string]any{
 		"kind": "channel", "name": "general", "idempotency_key": "general",
@@ -95,6 +101,7 @@ func TestConversationRoutesRejectOversizedOrMalformedTargetsBeforeAuthentication
 	}{
 		{http.MethodGet, "/api/v1/conversations"},
 		{http.MethodPost, "/api/v1/conversations"},
+		{http.MethodPost, "/api/v1/conversations/1/forks"},
 		{http.MethodGet, "/api/v1/conversations/1"},
 		{http.MethodGet, "/api/v1/conversations/1/members"},
 		{http.MethodPost, "/api/v1/conversations/1/members"},
@@ -146,6 +153,7 @@ func TestConversationNoQueryRoutesRejectQueryBeforeAuthenticationOrOrigin(t *tes
 		method, path string
 	}{
 		{http.MethodPost, "/api/v1/conversations?unexpected=1"},
+		{http.MethodPost, "/api/v1/conversations/1/forks?unexpected=1"},
 		{http.MethodGet, "/api/v1/conversations/1?unexpected=1"},
 		{http.MethodPost, "/api/v1/conversations/1/members?unexpected=1"},
 		{http.MethodDelete, "/api/v1/conversations/1/members/2?unexpected=1"},
@@ -194,7 +202,13 @@ type fakeConversationAPI struct {
 	dm        conversation.CreateDM
 	member    conversation.ChangeMember
 	created   conversation.Conversation
+	fork      conversation.ForkConversation
 	createErr error
+}
+
+func (a *fakeConversationAPI) Fork(_ context.Context, command conversation.ForkConversation) (conversation.Fork, error) {
+	a.fork = command
+	return conversation.Fork{Conversation: a.created}, a.createErr
 }
 
 func (a *fakeConversationAPI) CreateChannel(_ context.Context, command conversation.CreateChannel) (conversation.Conversation, error) {

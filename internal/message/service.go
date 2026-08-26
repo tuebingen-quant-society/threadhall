@@ -22,7 +22,7 @@ func NewService(repository Repository, now func() time.Time) (*Service, error) {
 
 func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 	if command.ConversationID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
-		!ValidIdempotencyKey(command.IdempotencyKey) {
+		!ValidIdempotencyKey(command.IdempotencyKey) || (command.ThreadRootID != nil && *command.ThreadRootID <= 0) {
 		return Result{}, ErrInvalidInput
 	}
 	rendered, err := RenderMarkdown(command.Body)
@@ -31,9 +31,31 @@ func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 	}
 	return s.repository.Send(ctx, SendRecord{
 		ConversationID: command.ConversationID, AuthorID: command.AuthorID,
-		Body: command.Body, RenderedBody: rendered, IdempotencyKey: command.IdempotencyKey,
+		ThreadRootID: command.ThreadRootID,
+		Body:         command.Body, RenderedBody: rendered, IdempotencyKey: command.IdempotencyKey,
 		CreatedAt: s.now().UTC(),
 	})
+}
+
+func (s *Service) Thread(ctx context.Context, query Thread) (ThreadPage, error) {
+	if query.ConversationID <= 0 || query.RootMessageID <= 0 || query.UserID <= 0 || query.AfterID < 0 ||
+		query.Limit < 0 || query.Limit > MaxPageLimit {
+		return ThreadPage{}, ErrInvalidInput
+	}
+	if query.Limit == 0 {
+		query.Limit = DefaultPageLimit
+	}
+	return s.repository.Thread(ctx, query)
+}
+
+func (s *Service) Threads(ctx context.Context, query ListThreads) (ThreadList, error) {
+	if query.ConversationID <= 0 || query.UserID <= 0 || query.Limit < 0 || query.Limit > MaxPageLimit {
+		return ThreadList{}, ErrInvalidInput
+	}
+	if query.Limit == 0 {
+		query.Limit = DefaultPageLimit
+	}
+	return s.repository.Threads(ctx, query)
 }
 
 func (s *Service) Edit(ctx context.Context, command Edit) (Result, error) {

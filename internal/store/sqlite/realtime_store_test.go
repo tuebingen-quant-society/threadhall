@@ -42,7 +42,8 @@ func TestReplayStoreOrderedEventsCarryInternalMembershipChanges(t *testing.T) {
 	_, err := db.Exec(`
 		INSERT INTO events(seq, conversation_id, actor_id, kind, entity_id, payload, created_at) VALUES
 			(5, 1, 2, 'conversation.member_removed', 1, '[1,1]', 2),
-			(6, 2, 2, 'conversation.created', 2, '["private","other-room"]', 2);
+			(6, 2, 2, 'conversation.created', 2, '["private","other-room"]', 2),
+			(7, 2, 2, 'conversation.forked', 2, '[1,4]', 2);
 	`)
 	if err != nil {
 		t.Fatalf("seed audience events: %v", err)
@@ -59,6 +60,11 @@ func TestReplayStoreOrderedEventsCarryInternalMembershipChanges(t *testing.T) {
 	if len(removed) != 1 || removed[0].UserID != 1 || removed[0].Joined ||
 		len(created) != 1 || created[0].UserID != 2 || !created[0].Joined {
 		t.Fatalf("membership changes = removed %#v created %#v", removed, created)
+	}
+	forked, err := NewReplayStore(db).OrderedEvents(context.Background(), 6, 1)
+	if err != nil || len(forked) != 1 || len(forked[0].MembershipChanges) != 1 ||
+		forked[0].MembershipChanges[0].UserID != 2 || !forked[0].MembershipChanges[0].Joined {
+		t.Fatalf("fork membership event = (%#v, %v)", forked, err)
 	}
 }
 

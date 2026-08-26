@@ -42,6 +42,7 @@ type MemberRecord struct {
 type Repository interface {
 	CreateChannel(context.Context, ChannelRecord) (Conversation, error)
 	CreateDM(context.Context, DMRecord) (Conversation, error)
+	Fork(context.Context, ForkRecord) (Fork, error)
 	List(context.Context, int64, int64, int) (ConversationPage, error)
 	Detail(context.Context, int64, int64) (Conversation, error)
 	ListMembers(context.Context, int64, int64, int64, int) (MemberPage, error)

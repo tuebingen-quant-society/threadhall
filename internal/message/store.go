@@ -15,6 +15,7 @@ var (
 
 type SendRecord struct {
 	ConversationID, AuthorID int64
+	ThreadRootID             *int64
 	Body, RenderedBody       string
 	IdempotencyKey           string
 	CreatedAt                time.Time
@@ -39,4 +40,6 @@ type Repository interface {
 	Edit(context.Context, EditRecord) (Result, error)
 	Delete(context.Context, DeleteRecord) (Result, error)
 	History(context.Context, History) (Page, error)
+	Thread(context.Context, Thread) (ThreadPage, error)
+	Threads(context.Context, ListThreads) (ThreadList, error)
 }

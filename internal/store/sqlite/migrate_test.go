@@ -15,13 +15,13 @@ func TestOpenAppliesCoreMigration(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if version != 3 {
-		t.Fatalf("schema version = %d, want 3", version)
+	if version != 4 {
+		t.Fatalf("schema version = %d, want 4", version)
 	}
 
 	wantTables := []string{
 		"users", "sessions", "invites", "conversations",
-		"conversation_members", "conversation_mutations", "messages", "message_mutations", "events",
+		"conversation_members", "conversation_mutations", "conversation_forks", "conversation_fork_mutations", "messages", "message_mutations", "events",
 	}
 	for _, table := range wantTables {
 		var count int
@@ -61,8 +61,8 @@ func TestApplyMigrationRollsBackScriptAndVersion(t *testing.T) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if version != 3 {
-		t.Fatalf("schema version after rollback = %d, want 3", version)
+	if version != 4 {
+		t.Fatalf("schema version after rollback = %d, want 4", version)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestOpenRefusesNewerSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initial Open: %v", err)
 	}
-	if _, err := db.Exec("PRAGMA user_version = 4"); err != nil {
+	if _, err := db.Exec("PRAGMA user_version = 5"); err != nil {
 		t.Fatalf("advance schema version: %v", err)
 	}
 	if err := db.Close(); err != nil {
@@ -124,8 +124,8 @@ func TestOpenUpgradesShippedCoreSchemaWithoutRewritingConversationRows(t *testin
 	if err := upgraded.QueryRow("SELECT name FROM conversations WHERE id = 7").Scan(&name); err != nil {
 		t.Fatalf("read preserved conversation: %v", err)
 	}
-	if version != 3 || name != "Legacy" {
-		t.Fatalf("upgraded version/name = %d/%q, want 3/Legacy", version, name)
+	if version != 4 || name != "Legacy" {
+		t.Fatalf("upgraded version/name = %d/%q, want 4/Legacy", version, name)
 	}
 	if _, err := upgraded.Exec(`INSERT INTO conversations(kind, name, created_by, idempotency_key, created_at)
 		VALUES ('private', 'legacy', 1, 'collision', ?)`, now); err == nil {
@@ -175,7 +175,7 @@ func TestOpenUpgradesVersionTwoWithoutRewritingMessageBodies(t *testing.T) {
 	if err := upgraded.QueryRow("SELECT body, rendered_body FROM messages WHERE id = 7").Scan(&raw, &rendered); err != nil {
 		t.Fatalf("read preserved message: %v", err)
 	}
-	if version != 3 || raw != "**raw**" || rendered != "<p><strong>raw</strong></p>" {
+	if version != 4 || raw != "**raw**" || rendered != "<p><strong>raw</strong></p>" {
 		t.Fatalf("upgraded version/raw/rendered = %d/%q/%q", version, raw, rendered)
 	}
 }

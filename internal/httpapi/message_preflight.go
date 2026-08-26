@@ -26,6 +26,7 @@ var errMessageRequestTooLarge = errors.New("message request body is too large")
 type messageBodyRequest struct {
 	Body           string `json:"body"`
 	IdempotencyKey string `json:"idempotency_key"`
+	ThreadRootID   *int64 `json:"thread_root_id,omitempty"`
 }
 
 type messageDeleteRequest struct {
@@ -35,7 +36,9 @@ type messageDeleteRequest struct {
 type preparedMessage struct {
 	conversationID int64
 	messageID      int64
+	rootMessageID  int64
 	beforeID       int64
+	afterID        int64
 	limit          int
 	body           messageBodyRequest
 	deletion       messageDeleteRequest
@@ -106,7 +109,8 @@ func preflightMessageBodyRoute(
 			writeMessagePreflightProblem(w, errMessageRequestTooLarge)
 			return
 		}
-		if !message.ValidBody(body.Body) || !message.ValidIdempotencyKey(body.IdempotencyKey) {
+		if !message.ValidBody(body.Body) || !message.ValidIdempotencyKey(body.IdempotencyKey) ||
+			(body.ThreadRootID != nil && *body.ThreadRootID <= 0) {
 			writeMessagePreflightProblem(w, message.ErrInvalidInput)
 			return
 		}

@@ -19,17 +19,17 @@ func adoptLegacySend(
 	fingerprint string,
 ) (message.Result, bool, error) {
 	var id, conversationID, authorID int64
-	var replyToID sql.NullInt64
-	err := tx.QueryRowContext(ctx, `SELECT id, conversation_id, author_id, reply_to_id
+	var replyToID, threadRootID sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT id, conversation_id, author_id, reply_to_id, thread_root_id
 		FROM messages WHERE author_id = ? AND idempotency_key = ?`,
-		record.AuthorID, record.IdempotencyKey).Scan(&id, &conversationID, &authorID, &replyToID)
+		record.AuthorID, record.IdempotencyKey).Scan(&id, &conversationID, &authorID, &replyToID, &threadRootID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return message.Result{}, false, nil
 	}
 	if err != nil {
 		return message.Result{}, false, err
 	}
-	if replyToID.Valid || conversationID != record.ConversationID {
+	if replyToID.Valid || threadRootID.Valid || record.ThreadRootID != nil || conversationID != record.ConversationID {
 		return message.Result{}, false, message.ErrConflict
 	}
 

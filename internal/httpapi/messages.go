@@ -14,6 +14,8 @@ type MessageAPI interface {
 	Edit(context.Context, message.Edit) (message.Result, error)
 	Delete(context.Context, message.Delete) (message.Result, error)
 	History(context.Context, message.History) (message.Page, error)
+	Thread(context.Context, message.Thread) (message.ThreadPage, error)
+	Threads(context.Context, message.ListThreads) (message.ThreadList, error)
 }
 
 type messageHandler struct {
@@ -39,6 +41,8 @@ func RegisterMessages(
 	}
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/messages", read(preflightMessageHistory, handler.history))
 	mux.Handle("POST /api/v1/conversations/{conversation_id}/messages", mutation(preflightMessageSend, handler.send))
+	mux.Handle("GET /api/v1/conversations/{conversation_id}/threads/{root_message_id}", read(preflightMessageThread, handler.thread))
+	mux.Handle("GET /api/v1/conversations/{conversation_id}/threads", read(preflightMessageThreadList, handler.threads))
 	mux.Handle("PATCH /api/v1/messages/{message_id}", mutation(preflightMessageEdit, handler.edit))
 	mux.Handle("DELETE /api/v1/messages/{message_id}", mutation(preflightMessageDelete, handler.delete))
 }
@@ -52,13 +56,46 @@ func (h *messageHandler) send(w http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	result, err := h.api.Send(request.Context(), message.Send{
 		ConversationID: prepared.conversationID, AuthorID: user.ID,
-		Body: prepared.body.Body, IdempotencyKey: prepared.body.IdempotencyKey,
+		ThreadRootID: prepared.body.ThreadRootID, Body: prepared.body.Body, IdempotencyKey: prepared.body.IdempotencyKey,
 	})
 	if writeMessageProblem(w, err) {
 		return
 	}
 	h.notifier.Notify(result.Event.Seq)
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func (h *messageHandler) thread(w http.ResponseWriter, request *http.Request) {
+	prepared, ok := preparedMessageFromContext(request.Context())
+	if !ok {
+		writeInternalProblem(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	page, err := h.api.Thread(request.Context(), message.Thread{
+		ConversationID: prepared.conversationID, RootMessageID: prepared.rootMessageID,
+		UserID: user.ID, AfterID: prepared.afterID, Limit: prepared.limit,
+	})
+	if writeMessageProblem(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (h *messageHandler) threads(w http.ResponseWriter, request *http.Request) {
+	prepared, ok := preparedMessageFromContext(request.Context())
+	if !ok {
+		writeInternalProblem(w)
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	list, err := h.api.Threads(request.Context(), message.ListThreads{
+		ConversationID: prepared.conversationID, UserID: user.ID, Limit: message.MaxPageLimit,
+	})
+	if writeMessageProblem(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 func (h *messageHandler) edit(w http.ResponseWriter, request *http.Request) {

@@ -25,7 +25,7 @@ func NewMessageStore(db *sql.DB, writer *Writer) *MessageStore {
 }
 
 func (s *MessageStore) Send(ctx context.Context, record message.SendRecord) (message.Result, error) {
-	fingerprint := messageFingerprint(record.ConversationID, record.Body)
+	fingerprint := messageFingerprint(record.ConversationID, record.ThreadRootID, record.Body)
 	var result message.Result
 	err := s.writeMessage(ctx, func(tx *sql.Tx) error {
 		stored, found, err := findMessageMutation(ctx, tx, record.AuthorID, record.IdempotencyKey, "send", fingerprint)
@@ -45,11 +45,13 @@ func (s *MessageStore) Send(ctx context.Context, record message.SendRecord) (mes
 			return nil
 		}
 		insert, err := tx.ExecContext(ctx, `INSERT INTO messages(
-			conversation_id, author_id, body, rendered_body, idempotency_key, created_at)
-			SELECT conversation_id, ?, ?, ?, ?, ? FROM conversation_members
-			WHERE conversation_id = ? AND user_id = ?`,
-			record.AuthorID, record.Body, record.RenderedBody, record.IdempotencyKey,
-			unix(record.CreatedAt), record.ConversationID, record.AuthorID)
+			conversation_id, author_id, thread_root_id, body, rendered_body, idempotency_key, created_at)
+			SELECT member.conversation_id, ?, ?, ?, ?, ?, ? FROM conversation_members member
+			WHERE member.conversation_id = ? AND member.user_id = ? AND (? IS NULL OR EXISTS(
+				SELECT 1 FROM messages root WHERE root.id = ? AND root.conversation_id = member.conversation_id
+				AND root.reply_to_id IS NULL AND root.thread_root_id IS NULL))`,
+			record.AuthorID, nullableInt64(record.ThreadRootID), record.Body, record.RenderedBody, record.IdempotencyKey,
+			unix(record.CreatedAt), record.ConversationID, record.AuthorID, nullableInt64(record.ThreadRootID), nullableInt64(record.ThreadRootID))
 		if err != nil {
 			return mapMessageConstraint(err)
 		}
@@ -66,7 +68,8 @@ func (s *MessageStore) Send(ctx context.Context, record message.SendRecord) (mes
 		}
 		item := message.Message{
 			ID: id, ConversationID: record.ConversationID, AuthorID: record.AuthorID,
-			Body: record.Body, RenderedBody: record.RenderedBody, CreatedAt: record.CreatedAt.UTC(),
+			ThreadRootID: record.ThreadRootID,
+			Body:         record.Body, RenderedBody: record.RenderedBody, CreatedAt: record.CreatedAt.UTC(),
 		}
 		event, err := insertMessageEvent(ctx, tx, "message.sent", item, record.CreatedAt)
 		if err != nil {
@@ -157,23 +160,33 @@ func messageEventPayload(kind string, item message.Message) (json.RawMessage, er
 	case "message.sent":
 		return json.Marshal(struct {
 			AuthorID     int64     `json:"author_id"`
+			ThreadRootID *int64    `json:"thread_root_id,omitempty"`
 			Body         string    `json:"body"`
 			RenderedBody string    `json:"rendered_body"`
 			CreatedAt    time.Time `json:"created_at"`
-		}{item.AuthorID, item.Body, item.RenderedBody, item.CreatedAt})
+		}{item.AuthorID, item.ThreadRootID, item.Body, item.RenderedBody, item.CreatedAt})
 	case "message.edited":
 		return json.Marshal(struct {
 			Body         string    `json:"body"`
 			RenderedBody string    `json:"rendered_body"`
 			EditedAt     time.Time `json:"edited_at"`
-		}{item.Body, item.RenderedBody, *item.EditedAt})
+			ThreadRootID *int64    `json:"thread_root_id,omitempty"`
+		}{item.Body, item.RenderedBody, *item.EditedAt, item.ThreadRootID})
 	case "message.deleted":
 		return json.Marshal(struct {
-			DeletedAt time.Time `json:"deleted_at"`
-		}{*item.DeletedAt})
+			DeletedAt    time.Time `json:"deleted_at"`
+			ThreadRootID *int64    `json:"thread_root_id,omitempty"`
+		}{*item.DeletedAt, item.ThreadRootID})
 	default:
 		return nil, errors.New("unknown message event type")
 	}
+}
+
+func nullableInt64(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func messageFingerprint(values ...any) string {

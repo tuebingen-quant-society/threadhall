@@ -159,9 +159,8 @@ func newHTTPVersionTwoReplyService(t *testing.T) (*message.Service, *sql.DB) {
 		INSERT INTO conversation_members(conversation_id, user_id, joined_at) VALUES (1, 1, ?);
 		INSERT INTO messages(id, conversation_id, author_id, reply_to_id, body, rendered_body, idempotency_key, created_at) VALUES
 			(1, 1, 1, NULL, 'root', '<p>root</p>', 'root', ?),
-			(2, 1, 1, 1, 'reply', '<p>reply</p>', 'reply', ?);
-		DROP TABLE message_mutations;
-		PRAGMA user_version = 2;`, now.Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {
+			(2, 1, 1, 1, 'reply', '<p>reply</p>', 'reply', ?);`,
+		now.Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()); err != nil {
 		t.Fatalf("seed version-two replies: %v", err)
 	}
 	if err := legacy.Close(); err != nil {

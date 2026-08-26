@@ -155,6 +155,11 @@ func eventMembershipChanges(event realtime.Event, actorID int64) ([]realtime.Mem
 			return nil, fmt.Errorf("invalid durable conversation event")
 		}
 		return []realtime.MembershipChange{{UserID: actorID, Joined: true}}, nil
+	case "conversation.forked":
+		if actorID <= 0 {
+			return nil, fmt.Errorf("invalid durable fork event")
+		}
+		return []realtime.MembershipChange{{UserID: actorID, Joined: true}}, nil
 	default:
 		return nil, nil
 	}

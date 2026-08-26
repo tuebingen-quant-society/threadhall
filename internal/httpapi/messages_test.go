@@ -23,9 +23,9 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	csrf := tokenString(0x51)
 
 	send := messageJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations/3/messages",
-		map[string]any{"body": "hello", "idempotency_key": "send-1"}, csrf, true)
+		map[string]any{"body": "hello", "thread_root_id": 7, "idempotency_key": "send-1"}, csrf, true)
 	if send.Code != http.StatusCreated || api.sent.ConversationID != 3 || api.sent.AuthorID != 4 ||
-		api.sent.Body != "hello" || send.Header().Get("Cache-Control") != "no-store" {
+		api.sent.Body != "hello" || api.sent.ThreadRootID == nil || *api.sent.ThreadRootID != 7 || send.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("send = status %d command %#v headers %#v; body=%s", send.Code, api.sent, send.Header(), send.Body.String())
 	}
 	var returned message.Result
@@ -48,6 +48,15 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	if read.Code != http.StatusOK || api.history.ConversationID != 3 || api.history.UserID != 4 ||
 		api.history.BeforeID != 8 || api.history.Limit != 2 {
 		t.Fatalf("history = status %d query %#v; body=%s", read.Code, api.history, read.Body.String())
+	}
+	thread := messageRead(t, handler, "/api/v1/conversations/3/threads/7?after_id=8&limit=2")
+	if thread.Code != http.StatusOK || api.thread.ConversationID != 3 || api.thread.RootMessageID != 7 ||
+		api.thread.UserID != 4 || api.thread.AfterID != 8 || api.thread.Limit != 2 {
+		t.Fatalf("thread = status %d query %#v; body=%s", thread.Code, api.thread, thread.Body.String())
+	}
+	threads := messageRead(t, handler, "/api/v1/conversations/3/threads")
+	if threads.Code != http.StatusOK || api.threads.ConversationID != 3 || api.threads.UserID != 4 || api.threads.Limit != message.MaxPageLimit {
+		t.Fatalf("threads = status %d query %#v; body=%s", threads.Code, api.threads, threads.Body.String())
 	}
 }
 
@@ -113,6 +122,7 @@ func TestMessageHTTPAppliesTargetGuardsBeforeAuthenticationAndSecurity(t *testin
 		{http.MethodGet, "/api/v1/conversations/3/messages?limit=101"},
 		{http.MethodGet, "/api/v1/conversations/3/messages?unknown=1"},
 		{http.MethodPost, "/api/v1/conversations/3/messages?unexpected=1"},
+		{http.MethodGet, "/api/v1/conversations/3/threads/7?after_id=nope"},
 		{http.MethodPatch, "/api/v1/messages/8?unexpected=1"},
 		{http.MethodDelete, "/api/v1/messages/8?unexpected=1"},
 	} {
@@ -204,6 +214,8 @@ type fakeMessageAPI struct {
 	edited  message.Edit
 	deleted message.Delete
 	history message.History
+	thread  message.Thread
+	threads message.ListThreads
 	result  message.Result
 	err     error
 	calls   int
@@ -241,4 +253,16 @@ func (a *fakeMessageAPI) History(_ context.Context, query message.History) (mess
 	a.calls++
 	a.history = query
 	return message.Page{}, a.err
+}
+
+func (a *fakeMessageAPI) Thread(_ context.Context, query message.Thread) (message.ThreadPage, error) {
+	a.calls++
+	a.thread = query
+	return message.ThreadPage{}, a.err
+}
+
+func (a *fakeMessageAPI) Threads(_ context.Context, query message.ListThreads) (message.ThreadList, error) {
+	a.calls++
+	a.threads = query
+	return message.ThreadList{}, a.err
 }

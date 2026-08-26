@@ -14,12 +14,13 @@ const (
 	MaxPageLimit           = 100
 )
 
-// Message is a durable root text message. Deleted messages retain identity and
-// ordering while exposing empty body fields.
+// Message is a durable root or one-level thread reply. Deleted messages retain
+// identity and ordering while exposing empty body fields.
 type Message struct {
 	ID             int64      `json:"id"`
 	ConversationID int64      `json:"conversation_id"`
 	AuthorID       int64      `json:"author_id"`
+	ThreadRootID   *int64     `json:"thread_root_id,omitempty"`
 	Body           string     `json:"body"`
 	RenderedBody   string     `json:"rendered_body"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -29,6 +30,7 @@ type Message struct {
 
 type Send struct {
 	ConversationID, AuthorID int64
+	ThreadRootID             *int64
 	Body, IdempotencyKey     string
 }
 
@@ -46,6 +48,33 @@ type History struct {
 	ConversationID, UserID int64
 	BeforeID               int64
 	Limit                  int
+}
+
+// Thread is a bounded ascending reply page anchored to one root message.
+type Thread struct {
+	ConversationID, RootMessageID, UserID int64
+	AfterID                               int64
+	Limit                                 int
+}
+
+type ThreadPage struct {
+	Root        Message   `json:"root"`
+	Replies     []Message `json:"replies"`
+	NextAfterID int64     `json:"next_after_id,omitempty"`
+}
+
+type ListThreads struct {
+	ConversationID, UserID int64
+	Limit                  int
+}
+
+type ThreadSummary struct {
+	Root       Message `json:"root"`
+	ReplyCount int     `json:"reply_count"`
+}
+
+type ThreadList struct {
+	Threads []ThreadSummary `json:"threads"`
 }
 
 type Page struct {

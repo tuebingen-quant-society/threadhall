@@ -135,6 +135,25 @@ func TestServiceValidatesMembershipMutations(t *testing.T) {
 	}
 }
 
+func TestServiceValidatesConversationFork(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	repository := &recordingRepository{}
+	service, err := NewService(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	_, err = service.Fork(context.Background(), ForkConversation{
+		ActorID: 1, SourceConversationID: 4, SourceMessageID: 9,
+		Kind: KindPrivate, Name: "  investigation  ", IdempotencyKey: "fork-1",
+	})
+	if err != nil || repository.fork.Name != "investigation" || repository.fork.CreatedAt != now {
+		t.Fatalf("Fork = (%#v, %v)", repository.fork, err)
+	}
+	if _, err := service.Fork(context.Background(), ForkConversation{}); err != ErrInvalidInput {
+		t.Fatalf("invalid Fork error = %v", err)
+	}
+}
+
 type recordingRepository struct {
 	channel                        ChannelRecord
 	dm                             DMRecord
@@ -143,6 +162,7 @@ type recordingRepository struct {
 	readUserID, readConversationID int64
 	memberLimit                    int
 	member                         MemberRecord
+	fork                           ForkRecord
 }
 
 func (r *recordingRepository) CreateChannel(_ context.Context, record ChannelRecord) (Conversation, error) {
@@ -153,6 +173,11 @@ func (r *recordingRepository) CreateChannel(_ context.Context, record ChannelRec
 func (r *recordingRepository) CreateDM(_ context.Context, record DMRecord) (Conversation, error) {
 	r.dm = record
 	return r.created, nil
+}
+
+func (r *recordingRepository) Fork(_ context.Context, record ForkRecord) (Fork, error) {
+	r.fork = record
+	return Fork{}, nil
 }
 
 func (r *recordingRepository) List(_ context.Context, _ int64, _ int64, limit int) (ConversationPage, error) {

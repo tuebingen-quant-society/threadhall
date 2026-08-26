@@ -73,6 +73,22 @@ func TestServiceBuildsRenderedRecordsAndBoundsHistory(t *testing.T) {
 	if repository.history.Limit != DefaultPageLimit {
 		t.Fatalf("history limit = %d, want %d", repository.history.Limit, DefaultPageLimit)
 	}
+	rootID := int64(7)
+	if _, err := service.Send(context.Background(), Send{ConversationID: 3, AuthorID: 4, ThreadRootID: &rootID, Body: "reply", IdempotencyKey: "reply-1"}); err != nil {
+		t.Fatalf("thread Send: %v", err)
+	}
+	if repository.sent.ThreadRootID == nil || *repository.sent.ThreadRootID != 7 {
+		t.Fatalf("thread root = %#v", repository.sent.ThreadRootID)
+	}
+	if _, err := service.Thread(context.Background(), Thread{ConversationID: 3, RootMessageID: 7, UserID: 4}); err != nil {
+		t.Fatalf("Thread: %v", err)
+	}
+	if repository.thread.Limit != DefaultPageLimit {
+		t.Fatalf("thread limit = %d", repository.thread.Limit)
+	}
+	if _, err := service.Threads(context.Background(), ListThreads{ConversationID: 3, UserID: 4}); err != nil || repository.threads.Limit != DefaultPageLimit {
+		t.Fatalf("Threads = (%#v, %v)", repository.threads, err)
+	}
 }
 
 type recordingRepository struct {
@@ -81,6 +97,8 @@ type recordingRepository struct {
 	edited    EditRecord
 	deleted   DeleteRecord
 	history   History
+	thread    Thread
+	threads   ListThreads
 }
 
 func (r *recordingRepository) Send(_ context.Context, record SendRecord) (Result, error) {
@@ -102,4 +120,14 @@ func (r *recordingRepository) Delete(_ context.Context, record DeleteRecord) (Re
 func (r *recordingRepository) History(_ context.Context, query History) (Page, error) {
 	r.history = query
 	return Page{}, nil
+}
+
+func (r *recordingRepository) Thread(_ context.Context, query Thread) (ThreadPage, error) {
+	r.thread = query
+	return ThreadPage{}, nil
+}
+
+func (r *recordingRepository) Threads(_ context.Context, query ListThreads) (ThreadList, error) {
+	r.threads = query
+	return ThreadList{}, nil
 }

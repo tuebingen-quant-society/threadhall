@@ -55,6 +55,20 @@ func (s *Service) CreateDM(ctx context.Context, command CreateDM) (Conversation,
 	})
 }
 
+func (s *Service) Fork(ctx context.Context, command ForkConversation) (Fork, error) {
+	name := strings.TrimSpace(command.Name)
+	if command.ActorID <= 0 || command.SourceConversationID <= 0 || command.SourceMessageID <= 0 ||
+		(command.Kind != KindChannel && command.Kind != KindPrivate) || name == "" ||
+		!utf8.ValidString(name) || len(name) > maxChannelNameBytes || !validIdempotencyKey(command.IdempotencyKey) {
+		return Fork{}, ErrInvalidInput
+	}
+	return s.repository.Fork(ctx, ForkRecord{
+		ActorID: command.ActorID, SourceConversationID: command.SourceConversationID,
+		SourceMessageID: command.SourceMessageID, Kind: command.Kind, Name: name,
+		IdempotencyKey: command.IdempotencyKey, CreatedAt: s.now().UTC(),
+	})
+}
+
 func (s *Service) List(ctx context.Context, query ListConversations) (ConversationPage, error) {
 	limit, err := pageLimit(query.UserID, query.BeforeID, query.Limit)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 type ConversationAPI interface {
 	CreateChannel(context.Context, conversation.CreateChannel) (conversation.Conversation, error)
 	CreateDM(context.Context, conversation.CreateDM) (conversation.Conversation, error)
+	Fork(context.Context, conversation.ForkConversation) (conversation.Fork, error)
 	List(context.Context, conversation.ListConversations) (conversation.ConversationPage, error)
 	Detail(context.Context, int64, int64) (conversation.Conversation, error)
 	Members(context.Context, conversation.ListMembers) (conversation.MemberPage, error)
@@ -53,6 +54,7 @@ func RegisterConversations(
 	}
 	mux.Handle("GET /api/v1/conversations", pageRead(handler.list))
 	mux.Handle("POST /api/v1/conversations", mutation(handler.create))
+	mux.Handle("POST /api/v1/conversations/{conversation_id}/forks", mutation(handler.fork))
 	mux.Handle("GET /api/v1/conversations/{conversation_id}", read(handler.detail))
 	mux.Handle("GET /api/v1/conversations/{conversation_id}/members", pageRead(handler.members))
 	mux.Handle("POST /api/v1/conversations/{conversation_id}/members", mutation(handler.addMember))

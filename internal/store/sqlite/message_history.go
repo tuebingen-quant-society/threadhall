@@ -10,12 +10,12 @@ import (
 
 func (s *MessageStore) History(ctx context.Context, query message.History) (message.Page, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		m.id, m.conversation_id, m.author_id, m.body, m.rendered_body,
+		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.body, m.rendered_body,
 		m.created_at, m.edited_at, m.deleted_at
 		FROM messages m
 		JOIN conversation_members member
 			ON member.conversation_id = m.conversation_id AND member.user_id = ?
-		WHERE m.conversation_id = ? AND m.reply_to_id IS NULL AND (? = 0 OR m.id < ?)
+		WHERE m.conversation_id = ? AND m.reply_to_id IS NULL AND m.thread_root_id IS NULL AND (? = 0 OR m.id < ?)
 		ORDER BY m.id DESC LIMIT ?`, query.UserID, query.ConversationID,
 		query.BeforeID, query.BeforeID, query.Limit+1)
 	if err != nil {
@@ -61,13 +61,16 @@ func (s *MessageStore) canReadConversation(ctx context.Context, userID, conversa
 func scanMessage(row rowScanner) (message.Message, error) {
 	var item message.Message
 	var createdAt int64
-	var editedAt, deletedAt sql.NullInt64
-	err := row.Scan(&item.ID, &item.ConversationID, &item.AuthorID, &item.Body,
+	var threadRoot, editedAt, deletedAt sql.NullInt64
+	err := row.Scan(&item.ID, &item.ConversationID, &item.AuthorID, &threadRoot, &item.Body,
 		&item.RenderedBody, &createdAt, &editedAt, &deletedAt)
 	if err != nil {
 		return message.Message{}, err
 	}
 	item.CreatedAt = time.Unix(createdAt, 0).UTC()
+	if threadRoot.Valid {
+		item.ThreadRootID = &threadRoot.Int64
+	}
 	if editedAt.Valid {
 		value := time.Unix(editedAt.Int64, 0).UTC()
 		item.EditedAt = &value
