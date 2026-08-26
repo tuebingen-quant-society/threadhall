@@ -34,4 +34,18 @@ describe("McpApp", () => {
 		const messages = mcpAppBridgeMessages({ jsonrpc: "2.0", id: "call-1", method: "tools/call" }, app);
 		expect(messages).toEqual([{ jsonrpc: "2.0", id: "call-1", error: { code: -32601, message: "Interactive tool calls are not enabled in Threadhall" } }]);
 	});
+
+	it("hosts generated visualizations with local design tokens and automatic sizing", () => {
+		const visualization: InlineApp = {
+			...app, server: "visualize", tool: "render", resource_uri: "ui://visualize/flow",
+			html: `<div id="widget"><button class="btn">Run</button></div>`,
+			arguments: { title: "Agent flow", mode: "wide" },
+		};
+		render(<McpApp app={visualization} />);
+		const frame = screen.getByTitle("Agent flow") as HTMLIFrameElement;
+		expect(frame.className).toContain("visualization-frame");
+		expect(frame.srcdoc).toContain("--background");
+		expect(frame.srcdoc).toContain("threadhall/resize");
+		expect(frame.srcdoc).toContain("connect-src 'none'");
+	});
 });

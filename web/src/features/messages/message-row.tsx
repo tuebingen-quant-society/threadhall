@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { Message, Question } from "../../api/types";
 import { MessageBody } from "./body";
+import { artifactMetadata, attachmentID } from "./artifact";
 import { McpApp } from "./mcp-app";
 import { DeleteIcon, EditIcon, MoreIcon, ReplyIcon, ThreadIcon } from "./message-icons";
 import { ReplyReference } from "./reply-reference";
@@ -19,9 +20,10 @@ interface MessageRowProps {
 	onReply?: (message: Message) => void;
 	onQuestionAnswer?: (message: Message, question: Question, answer: string) => void | Promise<void>;
 	questionAnswers?: Map<string, string | undefined>;
+	onOpenAttachment?: (app: NonNullable<Message["inline_apps"]>[number]) => void;
 }
 
-export function MessageRow({ message, replyTarget, own, author, memberNames, onEdit, onDelete, onOpenThread, onReply, onQuestionAnswer, questionAnswers }: MessageRowProps) {
+export function MessageRow({ message, replyTarget, own, author, memberNames, onEdit, onDelete, onOpenThread, onReply, onQuestionAnswer, questionAnswers, onOpenAttachment }: MessageRowProps) {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(message.body);
 	const row = useRef<HTMLElement>(null);
@@ -66,8 +68,15 @@ export function MessageRow({ message, replyTarget, own, author, memberNames, onE
 			<label class="sr-only" for={`edit-${message.id}`}>Edit message text</label>
 			<textarea ref={editField} id={`edit-${message.id}`} value={draft} onInput={(event) => setDraft(event.currentTarget.value)} maxLength={16_384} />
 			<div><button class="text-button" type="button" onClick={stopEditing}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
-		</form> : <><MessageBody html={message.rendered_body} memberNames={memberNames} />
-			{message.inline_apps?.map((app) => <McpApp key={`${app.server}:${app.resource_uri}`} app={app} />)}
+		</form> : <><MessageBody html={message.rendered_body} memberNames={memberNames} attachments={message.inline_apps} onOpenAttachment={onOpenAttachment} />
+			{message.inline_apps?.map((app) => {
+				const artifact = artifactMetadata(app);
+				const linked = message.rendered_body.includes(`#attachment-${attachmentID(app)}`);
+				return <div key={`${app.server}:${app.resource_uri}`}>
+					{artifact && !linked && <button class="artifact-reference" type="button" onClick={() => onOpenAttachment?.(app)}>{artifact.filename}</button>}
+					{app.server !== "threadhall-files" && <McpApp app={app} />}
+				</div>;
+			})}
 			{onQuestionAnswer && message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={questionAnswers?.get(question.id)} showQuestion={!message.body.includes(question.question)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
 		{!deleted && !editing && <details class="message-actions">
 			<summary ref={actionTrigger} aria-label="Message actions" title="Message actions"><MoreIcon /></summary>

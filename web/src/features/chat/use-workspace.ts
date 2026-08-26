@@ -11,6 +11,8 @@ import { ListCoordinator, isAbortError, staleRequest } from "./list-coordinator"
 import { loadConversationPages, loadMemberPages } from "./load-pages";
 import { eventThreadRoot } from "../threads/events";
 import { conversationActions } from "./conversation-actions";
+import { conversationLabel } from "../conversations/list";
+import { browserNotifications, showNewMessageNotification } from "../notifications/browser";
 
 export interface WorkspaceSocket { start(): void; stop(): void }
 export type WorkspaceSocketFactory = (callbacks: SocketCallbacks) => WorkspaceSocket;
@@ -19,7 +21,7 @@ type Scope = { id: number | undefined; selection: number; fetch: number };
 type SelectedScope = Scope & { id: number };
 type MutationScope = Pick<SelectedScope, "id" | "selection">;
 const mutationKey = (operation: string) => `${operation}-${crypto.randomUUID()}`;
-export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFactory) {
+export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFactory, currentUserID: number) {
 	const [conversations, setConversations] = useState<Conversation[]>([]);
 	const [conversationCursor, setConversationCursor] = useState<number>();
 	const [selectedId, setSelectedId] = useState<number>();
@@ -267,6 +269,16 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		const socket = socketFactory({
 			onStatus: setConnection,
 			onEvent: (event) => {
+				if (event.type === "message.sent" && typeof event.payload === "object" && event.payload !== null && !Array.isArray(event.payload)) {
+					const authorID = (event.payload as { author_id?: unknown }).author_id;
+					if (typeof authorID === "number" && Number.isSafeInteger(authorID) && authorID > 0) {
+						const conversation = conversationsRef.current.find((item) => item.id === event.conversation_id);
+						const author = membersRef.current.find((member) => member.user_id === authorID)?.username ?? "Someone";
+						showNewMessageNotification({ notifications: browserNotifications(), currentUserID, authorID, messageID: event.entity_id,
+							conversationName: conversation ? conversationLabel(conversation) : "a conversation", authorName: author,
+							isConversationActive: event.conversation_id === scopeRef.current.id && document.visibilityState === "visible" });
+					}
+				}
 				if (event.type.startsWith("conversation.")) coalescer.request();
 				if (eventThreadRoot(event) !== undefined && event.conversation_id === scopeRef.current.id) setThreadRevision((value) => value + 1);
 				else if (event.type.startsWith("message.") && event.conversation_id === scopeRef.current.id) setTimeline((state) => {
@@ -277,7 +289,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		});
 		socket.start();
 		return () => { coalescer.stop(); recovery.stop(); historyRecovery.current = null; socket.stop(); };
-	}, [refreshAuthoritative, socketFactory]);
+	}, [currentUserID, refreshAuthoritative, socketFactory]);
 
 	useEffect(() => { if (timeline.historyGeneration > 0) historyRecovery.current?.request(); }, [timeline.historyGeneration]);
 

@@ -229,6 +229,7 @@ interface TimelineProps {
 	onOpenThread: (message: Message) => void;
 	onReply?: (message: Message) => void;
 	onQuestionAnswer?: (message: Message, question: Question, answer: string) => void | Promise<void>;
+	onOpenAttachment?: (app: InlineApp) => void;
 }
 
 export function Timeline(props: TimelineProps) {
@@ -249,6 +250,7 @@ export function Timeline(props: TimelineProps) {
 				memberNames={props.memberNames}
 				onEdit={props.onEdit} onDelete={props.onDelete} onOpenThread={props.onOpenThread} onReply={props.onReply}
 				onQuestionAnswer={props.onQuestionAnswer}
+				onOpenAttachment={props.onOpenAttachment}
 				questionAnswers={new Map(message.questions?.map((question) => [question.id, linkedQuestionAnswer(props.messages, props.currentUserId, message.id, question)]))}
 			/>)}
 			{props.pending?.map((message) => <article class="message-row pending-message" key={message.idempotencyKey}>

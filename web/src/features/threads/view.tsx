@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { ApiClient, errorDetail } from "../../api/client";
-import type { Capability, ConversationKind, Member, Message, Question, ThreadPage } from "../../api/types";
+import type { Capability, ConversationKind, InlineApp, Member, Message, Question, ThreadPage } from "../../api/types";
 import { Composer } from "../messages/composer";
 import { MessageBody } from "../messages/body";
 import { McpApp } from "../messages/mcp-app";
@@ -21,19 +21,20 @@ interface ThreadViewProps {
 	canDelete?: boolean;
 	onDeleted?: () => void;
 	onRead?: () => void;
+	onOpenAttachment?: (app: InlineApp) => void;
 }
 
-function ThreadMessage({ message, replyTarget, author, memberNames, allMessages, currentUserId, onReply, onQuestionAnswer }: { message: Message; replyTarget?: Message; author: string; memberNames: Map<number, string>; allMessages: Message[]; currentUserId: number; onReply: (message: Message) => void; onQuestionAnswer: (message: Message, question: Question, answer: string) => Promise<void> }) {
+function ThreadMessage({ message, replyTarget, author, memberNames, allMessages, currentUserId, onReply, onQuestionAnswer, onOpenAttachment }: { message: Message; replyTarget?: Message; author: string; memberNames: Map<number, string>; allMessages: Message[]; currentUserId: number; onReply: (message: Message) => void; onQuestionAnswer: (message: Message, question: Question, answer: string) => Promise<void>; onOpenAttachment?: (app: InlineApp) => void }) {
 	return <article id={`message-${message.id}`} class="thread-message" tabIndex={-1}>
 		<header><strong>{author}</strong><time dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><button type="button" onClick={() => onReply(message)}>Reply</button></header>
 		<ReplyReference message={message} target={replyTarget} memberNames={memberNames} />
-		{message.deleted_at ? <p class="tombstone">Message deleted</p> : <><MessageBody html={message.rendered_body} memberNames={memberNames} />
-			{message.inline_apps?.map((app) => <McpApp key={`${app.server}:${app.resource_uri}`} app={app} />)}
+		{message.deleted_at ? <p class="tombstone">Message deleted</p> : <><MessageBody html={message.rendered_body} memberNames={memberNames} attachments={message.inline_apps} onOpenAttachment={onOpenAttachment} />
+			{message.inline_apps?.filter((app) => app.server !== "threadhall-files").map((app) => <McpApp key={`${app.server}:${app.resource_uri}`} app={app} />)}
 			{message.questions?.map((question) => <QuestionCard key={question.id} question={question} answered={linkedQuestionAnswer(allMessages, currentUserId, message.id, question)} showQuestion={!message.body.includes(question.question)} onAnswer={(answer) => onQuestionAnswer(message, question, answer)} />)}</>}
 	</article>;
 }
 
-export function ThreadView({ api, conversationId, root, currentUserId, memberNames, members, capabilities, revision, onFork, canDelete, onDeleted, onRead }: ThreadViewProps) {
+export function ThreadView({ api, conversationId, root, currentUserId, memberNames, members, capabilities, revision, onFork, canDelete, onDeleted, onRead, onOpenAttachment }: ThreadViewProps) {
 	const [page, setPage] = useState<ThreadPage>();
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
@@ -99,8 +100,8 @@ export function ThreadView({ api, conversationId, root, currentUserId, memberNam
 		</form>}
 		{error && <p class="inline-error thread-error" role="alert">{error}</p>}
 		<div class="thread-history" aria-busy={loading}>
-			<ThreadMessage message={page?.root ?? root} replyTarget={root.reply_to_message_id ? byID.get(root.reply_to_message_id) : undefined} memberNames={memberNames} author={memberNames.get(root.author_id) ?? `User ${root.author_id}`} allMessages={allMessages} currentUserId={currentUserId} onReply={setReplyingTo} onQuestionAnswer={answerQuestion} />
-			{page?.replies.map((reply) => <ThreadMessage key={reply.id} message={reply} replyTarget={reply.reply_to_message_id ? byID.get(reply.reply_to_message_id) : undefined} memberNames={memberNames} author={memberNames.get(reply.author_id) ?? `User ${reply.author_id}`} allMessages={allMessages} currentUserId={currentUserId} onReply={setReplyingTo} onQuestionAnswer={answerQuestion} />)}
+			<ThreadMessage message={page?.root ?? root} replyTarget={root.reply_to_message_id ? byID.get(root.reply_to_message_id) : undefined} memberNames={memberNames} author={memberNames.get(root.author_id) ?? `User ${root.author_id}`} allMessages={allMessages} currentUserId={currentUserId} onReply={setReplyingTo} onQuestionAnswer={answerQuestion} onOpenAttachment={onOpenAttachment} />
+			{page?.replies.map((reply) => <ThreadMessage key={reply.id} message={reply} replyTarget={reply.reply_to_message_id ? byID.get(reply.reply_to_message_id) : undefined} memberNames={memberNames} author={memberNames.get(reply.author_id) ?? `User ${reply.author_id}`} allMessages={allMessages} currentUserId={currentUserId} onReply={setReplyingTo} onQuestionAnswer={answerQuestion} onOpenAttachment={onOpenAttachment} />)}
 			{loading && !page && <p class="muted">Loading thread…</p>}
 		</div>
 		<Composer id={`thread-composer-${root.id}`} conversationName="thread" onSend={send} mentionCandidates={members} capabilities={capabilities}

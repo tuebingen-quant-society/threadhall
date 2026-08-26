@@ -72,4 +72,12 @@ describe("WorkspaceShell desktop panes", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Show details" }));
 		expect(screen.getByText("Members")).toBeTruthy();
 	});
+
+	it("restores a collapsed pane when an artifact requests it", () => {
+		Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: media(false) });
+		const view = render(<WorkspaceShell navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Preview</span>} />);
+		fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
+		view.rerender(<WorkspaceShell contextRequestKey="file-1" navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Preview</span>} />);
+		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).not.toBe("true");
+	});
 });

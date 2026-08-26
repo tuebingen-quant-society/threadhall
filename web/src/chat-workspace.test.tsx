@@ -92,6 +92,37 @@ describe("ChatWorkspace history races", () => {
 	});
 });
 
+describe("ChatWorkspace browser notifications", () => {
+	it("notifies about a live message from another member in another conversation", async () => {
+		const previous = Object.getOwnPropertyDescriptor(window, "Notification");
+		const notices: Array<{ title: string; options?: NotificationOptions }> = [];
+		class FakeNotification {
+			static permission: NotificationPermission = "granted";
+			static async requestPermission() { return FakeNotification.permission; }
+			constructor(title: string, options?: NotificationOptions) { notices.push({ title, options }); }
+		}
+		Object.defineProperty(window, "Notification", { configurable: true, value: FakeNotification });
+		try {
+			const socket = socketHarness();
+			renderWorkspace(fakeApi(), socket.factory);
+			await ready();
+
+			act(() => socket.callbacks.onEvent({
+				seq: 8, type: "message.sent", conversation_id: 1, entity_id: 44,
+				payload: { author_id: 8, body: "new research note", rendered_body: "<p>new research note</p>", created_at: "2026-08-26T18:00:00Z" },
+			}));
+
+			expect(notices).toEqual([{
+				title: "New message in research",
+				options: { body: "Someone sent you a message", tag: "threadhall-message-44" },
+			}]);
+		} finally {
+			if (previous) Object.defineProperty(window, "Notification", previous);
+			else Reflect.deleteProperty(window, "Notification");
+		}
+	});
+});
+
 describe("ChatWorkspace send resync races", () => {
 	it("keeps a rejected in-flight send retryable under the same key across resync", async () => {
 		const firstAttempt = deferred<MessageResult>();

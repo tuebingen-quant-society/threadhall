@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef } from "preact/hooks";
 
+import type { InlineApp } from "../../api/types";
+import { attachmentID } from "./artifact";
+
 const username = /@([\p{L}\p{N}][\p{L}\p{N}._-]{0,63})/gu;
 const excluded = new Set(["A", "CODE", "PRE", "SCRIPT", "STYLE"]);
 
-export function MessageBody({ html, memberNames }: { html: string; memberNames: Map<number, string> }) {
+export function MessageBody({ html, memberNames, attachments = [], onOpenAttachment }: { html: string; memberNames: Map<number, string>; attachments?: InlineApp[]; onOpenAttachment?: (app: InlineApp) => void }) {
 	const root = useRef<HTMLDivElement>(null);
 	const members = useMemo(() => new Map([...memberNames].map(([id, name]) => [name.toLocaleLowerCase(), id])), [memberNames]);
 	const memberKey = useMemo(() => [...memberNames].map(([id, name]) => `${id}:${name}`).join("\u0000"), [memberNames]);
@@ -36,5 +39,13 @@ export function MessageBody({ html, memberNames }: { html: string; memberNames: 
 		}
 	}, [html, memberKey, members]);
 
-	return <div ref={root} class="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+	function openAttachment(event: MouseEvent) {
+		const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#attachment-"]');
+		if (!link) return;
+		const app = attachments.find((candidate) => link.hash === `#attachment-${attachmentID(candidate)}`);
+		if (!app) return;
+		event.preventDefault(); onOpenAttachment?.(app);
+	}
+
+	return <div ref={root} class="message-body" onClick={openAttachment} dangerouslySetInnerHTML={{ __html: html }} />;
 }

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { InlineApp } from "../../api/types";
+import { visualizationDocument, visualizationMetadata } from "./visualization-host";
 
 interface RPCRequest {
 	jsonrpc?: string;
@@ -49,17 +50,27 @@ export function mcpAppBridgeMessages(request: RPCRequest, app: InlineApp): unkno
 
 export function McpApp({ app }: { app: InlineApp }) {
 	const frame = useRef<HTMLIFrameElement>(null);
-	const source = useMemo(() => sandboxDocument(app.html), [app.html]);
+	const visualization = app.server === "visualize" && app.tool === "render";
+	const metadata = useMemo(() => visualizationMetadata(app.arguments), [app.arguments]);
+	const source = useMemo(() => sandboxDocument(visualization ? visualizationDocument(app.html) : app.html), [app.html, visualization]);
+	const [height, setHeight] = useState(288);
 	useEffect(() => {
 		function receive(event: MessageEvent) {
 			if (event.source !== frame.current?.contentWindow || typeof event.data !== "object" || event.data === null) return;
+			if (visualization && (event.data as { type?: string }).type === "threadhall/resize") {
+				const requested = Number((event.data as { height?: unknown }).height);
+				if (Number.isFinite(requested)) setHeight(Math.max(120, Math.min(720, Math.ceil(requested))));
+				return;
+			}
 			for (const message of mcpAppBridgeMessages(event.data as RPCRequest, app)) {
 				frame.current?.contentWindow?.postMessage(message, "*");
 			}
 		}
 		window.addEventListener("message", receive);
 		return () => window.removeEventListener("message", receive);
-	}, [app]);
-	return <iframe ref={frame} class="mcp-app-frame" title={`Interactive UI from ${app.server}`}
+	}, [app, visualization]);
+	const className = `mcp-app-frame${visualization ? ` visualization-frame${metadata.mode === "wide" ? " wide" : ""}` : ""}`;
+	return <iframe ref={frame} class={className} title={visualization ? metadata.title : `Interactive UI from ${app.server}`}
+		style={visualization ? { height: `${height}px` } : undefined}
 		sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={source} />;
 }

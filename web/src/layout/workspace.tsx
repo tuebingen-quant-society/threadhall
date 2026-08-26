@@ -6,6 +6,7 @@ interface WorkspaceShellProps {
 	main: ComponentChildren;
 	context: ComponentChildren;
 	selectionKey?: number | string;
+	contextRequestKey?: number | string;
 }
 
 function useMedia(query: string) {
@@ -25,7 +26,7 @@ function focusable(panel: HTMLElement) {
 	return [...panel.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
 }
 
-export function WorkspaceShell({ navigation, main, context, selectionKey }: WorkspaceShellProps) {
+export function WorkspaceShell({ navigation, main, context, selectionKey, contextRequestKey }: WorkspaceShellProps) {
 	const compact = useMedia("(max-width: 700px)");
 	const contextDrawer = useMedia("(max-width: 980px)");
 	const [navigationOpen, setNavigationOpen] = useState(false);
@@ -37,6 +38,7 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 	const contextOpener = useRef<HTMLButtonElement>(null);
 	const mainPanel = useRef<HTMLElement>(null);
 	const previousSelection = useRef(selectionKey);
+	const previousContextRequest = useRef(contextRequestKey);
 
 	const activePanel = compact && navigationOpen ? navigationPanel.current
 		: contextDrawer && contextOpen ? contextPanel.current : null;
@@ -60,6 +62,12 @@ export function WorkspaceShell({ navigation, main, context, selectionKey }: Work
 	useEffect(() => {
 		if (contextOpen) focusable(contextPanel.current!)[0]?.focus();
 	}, [contextOpen]);
+	useEffect(() => {
+		if (contextRequestKey === undefined || previousContextRequest.current === contextRequestKey) return;
+		setContextCollapsed(false);
+		if (contextDrawer) setContextOpen(true);
+		previousContextRequest.current = contextRequestKey;
+	}, [contextDrawer, contextRequestKey]);
 
 	useEffect(() => {
 		if (activePanel === null) return;

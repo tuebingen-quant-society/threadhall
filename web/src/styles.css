@@ -64,9 +64,10 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 
 .brand-block { padding: 1.6rem 1.35rem 1.35rem; border-bottom: 1px solid rgba(255, 255, 255, .1); }
 .brand-block h1 { margin: 0 0 1.5rem; font-size: 1.25rem; font-weight: 620; letter-spacing: -.03em; }
-.brand-block > div { display: flex; align-items: center; justify-content: space-between; color: #a3a3a3; font-size: .8rem; }
+.brand-block .brand-actions { display: flex; align-items: center; justify-content: space-between; gap: .65rem; color: #a3a3a3; font-size: .8rem; }
 .brand-block button { padding: 0; border: 0; background: transparent; color: #a3a3a3; font-size: .75rem; }
 .brand-block .profile-link { color: #dedede; text-decoration: underline; text-decoration-color: #666; text-underline-offset: 3px; }
+.notification-status, .notification-control { color: #a3a3a3; font-size: .7rem; white-space: nowrap; }
 .new-conversation { width: calc(100% - 2.7rem); margin: 1.2rem 1.35rem .5rem; padding: .68rem .8rem; border: 1px solid rgba(255, 255, 255, .18); background: transparent; color: #eee9df; text-align: left; }
 .new-conversation-form { margin: 1rem; padding: 1rem; border-top: 1px solid rgba(255, 255, 255, .15); border-bottom: 1px solid rgba(255, 255, 255, .15); }
 .new-conversation-form label { color: #bbb8af; }
@@ -134,6 +135,9 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .reply-reference strong { flex: none; color: #4f4c46; font-weight: 600; }
 .reply-reference span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcp-app-frame { display: block; width: min(100%, 42rem); height: 18rem; margin-top: .65rem; border: 1px solid var(--line); background: #fff; }
+.visualization-frame { width: 100%; max-width: 42rem; transition: height .12s ease; }
+.visualization-frame.wide { max-width: none; }
+.artifact-reference { display: inline; margin: .25rem 0 0; padding: 0; border: 0; background: transparent; color: #111; font-size: .8rem; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .message-actions { position: absolute; top: .35rem; right: 0; opacity: 0; transition: opacity .12s ease; }
 .message-row:hover .message-actions, .message-actions:focus-within, .message-actions[open] { opacity: 1; }
 .message-actions summary, .message-actions button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #8a8a8a; transition: color .12s ease, background-color .12s ease; }
@@ -176,6 +180,13 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .question-other { display: grid; grid-template-columns: 1fr auto; gap: .4rem; margin-top: .45rem; }
 
 .detail-pane-inner { padding: 2rem 1.4rem; }
+.file-preview { min-height: 100%; padding: 1.4rem; }
+.file-preview > header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; margin: .7rem 0 1.25rem; }
+.file-preview > header h2 { margin: 0; font-size: .9rem; overflow-wrap: anywhere; }
+.file-preview > header p { margin: .2rem 0 0; color: var(--ink-muted); font-size: .68rem; }
+.file-preview > header button { padding: 0; border: 0; background: transparent; color: var(--ink-muted); font-size: .7rem; }
+.file-preview .mcp-app-frame { width: 100%; margin: 0; }
+.file-preview-markdown { font-size: .8rem; }
 .detail-pane-inner h2 { margin: 0 0 .4rem; font-size: 1.2rem; font-weight: 620; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .detail-kind { color: var(--ink-muted); font-size: .8rem; }
 .detail-pane-inner dl { margin: 2rem 0; border-top: 1px solid var(--line); }
