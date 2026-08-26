@@ -5,8 +5,8 @@ import type { ConnectionState, Conversation, Member, Message } from "../../api/t
 import { RealtimeSocket, type SocketCallbacks } from "../../realtime/socket";
 import { appendConversationPage, appendMemberPage } from "../conversations/collection";
 import type { ConversationDraft } from "../conversations/create";
-import { applyRealtimeEvent, mergeHistoryPage, mergeMessageResult, mergeOlderHistoryPage, type PendingMessage, queuePending, reconcilePending, type TimelineState } from "../messages/timeline";
-import { createInvalidationCoalescer } from "./invalidation";
+import { applyRealtimeEvent, mergeHistoryPage, mergeMessageResult, mergeOlderHistoryPage, type PendingMessage, queuePending, reconcilePending, recoverHistoryPage, type TimelineState } from "../messages/timeline";
+import { createInvalidationCoalescer, type InvalidationCoalescer } from "./invalidation";
 import { ListCoordinator, isAbortError, staleRequest } from "./list-coordinator";
 import { loadConversationPages, loadMemberPages } from "./load-pages";
 
@@ -17,9 +17,9 @@ export const defaultSocketFactory: WorkspaceSocketFactory = (callbacks) => new R
 type Scope = { id: number | undefined; selection: number; fetch: number };
 type SelectedScope = Scope & { id: number };
 type MutationScope = Pick<SelectedScope, "id" | "selection">;
-const emptyTimeline = (): TimelineState => ({ messages: [], entitySeq: new Map(), entityPatches: new Map(), window: "latest" });
+const emptyTimeline = (): TimelineState => ({ messages: [], entitySeq: new Map(), entityPatches: new Map(), pinnedIds: new Set(), historyGeneration: 0, window: "latest" });
 const mutationKey = (operation: string) => `${operation}-${crypto.randomUUID()}`;
-
+const invalidatedHistory = () => new DOMException("History generation changed", "InvalidStateError");
 export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFactory) {
 	const [conversations, setConversations] = useState<Conversation[]>([]);
 	const [conversationCursor, setConversationCursor] = useState<number>();
@@ -44,6 +44,8 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	const conversationsRef = useRef<Conversation[]>([]);
 	const membersRef = useRef<Member[]>([]);
 	const historyReady = useRef(false);
+	const historyGeneration = useRef(0);
+	const historyRecovery = useRef<InvalidationCoalescer | null>(null);
 	const scopeRef = useRef<Scope>({ id: undefined, selection: 0, fetch: 0 });
 	const selectionController = useRef<AbortController | null>(null);
 	const dataControllers = useRef(new Set<AbortController>());
@@ -65,6 +67,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		setSelectedId(id); setSelectionGeneration(selection);
 		setDetail(null); setMembers([]); membersRef.current = [];
 		historyReady.current = false;
+		historyGeneration.current = 0;
 		setTimeline(emptyTimeline()); setPending([]);
 		setMemberCursor(undefined); setMessageCursor(undefined);
 		setDetailError(""); setMessageError(""); setMutationError("");
@@ -100,14 +103,15 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	useEffect(() => {
 		if (selectedId === undefined) { setMessageLoading(false); return; }
 		const scope = { ...scopeRef.current } as SelectedScope;
+		const generation = historyGeneration.current;
 		const controller = new AbortController(); selectionController.current = controller;
 		setMessageLoading(true);
 		Promise.all([api.conversation(scope.id, controller.signal), api.members(scope.id, controller.signal), api.history(scope.id, controller.signal)])
 			.then(([item, memberPage, messagePage]) => {
-				if (!scopeCurrent(scope, controller)) throw staleRequest();
+				if (!scopeCurrent(scope, controller) || historyGeneration.current !== generation) throw staleRequest();
 				const result = appendMemberPage([], memberPage);
 				setDetail(item); membersRef.current = result.items; setMembers(result.items); setMemberCursor(result.nextBeforeId);
-				setTimeline((state) => mergeHistoryPage(state, messagePage.messages)); setMessageCursor(messagePage.next_before_id); historyReady.current = true;
+				setTimeline((state) => mergeHistoryPage(state, messagePage.messages, generation)); setMessageCursor(messagePage.next_before_id); historyReady.current = true;
 			}).catch((error) => {
 				if (scopeCurrent(scope, controller) && !isAbortError(error)) { const text = errorDetail(error); setDetailError(text); setMessageError(text); }
 			}).finally(() => { if (scopeCurrent(scope, controller)) setMessageLoading(false); });
@@ -164,11 +168,12 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 
 	async function loadOlderMessages() {
 		const action = captureData(); if (action === null || messageCursor === undefined) return;
+		const generation = historyGeneration.current;
 		setMessageLoading(true);
 		try {
 			const page = await api.history(action.scope.id, action.controller.signal, messageCursor);
-			if (!scopeCurrent(action.scope, action.controller)) throw staleRequest();
-			setTimeline((state) => mergeOlderHistoryPage(state, page.messages)); setMessageCursor(page.next_before_id);
+			if (!scopeCurrent(action.scope, action.controller) || historyGeneration.current !== generation) throw staleRequest();
+			setTimeline((state) => mergeOlderHistoryPage(state, page.messages, generation)); setMessageCursor(page.next_before_id);
 		} catch (error) {
 			if (scopeCurrent(action.scope, action.controller) && !isAbortError(error)) setMessageError(errorDetail(error));
 		} finally {
@@ -212,19 +217,20 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		});
 	}
 
-	const refreshSelected = useCallback(async (scope: SelectedScope, controller: AbortController, history: boolean) => {
+	const refreshSelected = useCallback(async (scope: SelectedScope, controller: AbortController, history: boolean, generation: number) => {
 		const [item, memberResult] = await Promise.all([
 			api.conversation(scope.id, controller.signal),
 			loadMemberPages(api, scope.id, Math.max(100, membersRef.current.length), controller.signal),
 		]);
 		const page = history ? await api.history(scope.id, controller.signal) : null;
 		if (!scopeCurrent(scope, controller)) throw staleRequest();
+		if (history && historyGeneration.current !== generation) throw invalidatedHistory();
 		setDetail(item); membersRef.current = memberResult.items; setMembers(memberResult.items); setMemberCursor(memberResult.nextBeforeId);
-		if (page !== null) { setTimeline((state) => mergeHistoryPage(state, page.messages)); setMessageCursor(page.next_before_id); }
+		if (page !== null) { setTimeline((state) => recoverHistoryPage(state, page.messages, generation)); setMessageCursor(page.next_before_id); }
 		setDetailError(""); setMessageError("");
 	}, [api, scopeCurrent]);
 
-	const refreshAuthoritative = useCallback(async (history: boolean) => {
+	const refreshAuthoritative = useCallback(async (history: boolean, generation = historyGeneration.current) => {
 		const scope = history ? renewFetchScope() : { ...scopeRef.current };
 		let refreshingSelection = false;
 		let refreshingHistory = history;
@@ -244,11 +250,12 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 					if (refreshingHistory) setMessageLoading(true);
 				}
 					refreshingSelection = true;
-					await refreshSelected(scope as SelectedScope, ticket.controller, refreshingHistory);
+					await refreshSelected(scope as SelectedScope, ticket.controller, refreshingHistory, generation);
 				});
 			setConversationError("");
 			if (refreshingHistory && scopeCurrent(scope)) { historyReady.current = true; setMessageLoading(false); }
 		} catch (error) {
+			if (error instanceof DOMException && error.name === "InvalidStateError") throw error;
 			if (!scopeCurrent(scope) || isAbortError(error)) throw staleRequest();
 			if (refreshingSelection && error instanceof ApiProblem && error.code === "not_found" && scope.id !== undefined) { select(undefined); return; }
 			const text = history ? `Resync failed: ${errorDetail(error)}` : errorDetail(error);
@@ -259,17 +266,23 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 
 	useEffect(() => {
 		const coalescer = createInvalidationCoalescer(() => refreshAuthoritative(false));
+		const recovery = createInvalidationCoalescer(() => refreshAuthoritative(true, historyGeneration.current));
+		historyRecovery.current = recovery;
 		const socket = socketFactory({
 			onStatus: setConnection,
 			onEvent: (event) => {
 				if (event.type.startsWith("conversation.")) coalescer.request();
-				if (event.type.startsWith("message.") && event.conversation_id === scopeRef.current.id) setTimeline((state) => applyRealtimeEvent(state, event));
+				if (event.type.startsWith("message.") && event.conversation_id === scopeRef.current.id) setTimeline((state) => {
+					const next = applyRealtimeEvent(state, event); historyGeneration.current = next.historyGeneration; return next;
+				});
 			},
 			onResync: () => refreshAuthoritative(true),
 		});
 		socket.start();
-		return () => { coalescer.stop(); socket.stop(); };
+		return () => { coalescer.stop(); recovery.stop(); historyRecovery.current = null; socket.stop(); };
 	}, [refreshAuthoritative, socketFactory]);
+
+	useEffect(() => { if (timeline.historyGeneration > 0) historyRecovery.current?.request(); }, [timeline.historyGeneration]);
 
 	useEffect(() => () => {
 		selectionController.current?.abort(); lists.current.dispose();

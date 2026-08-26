@@ -112,3 +112,60 @@ JavaScript 47.82 kB / 16.02 kB gzip. Initial compressed JS remains below 300 KiB
 - Local `make check` under Node 23.11.0 emitted dependency engine warnings. Install,
   typecheck, tests, build, and audit still passed; CI already declares Node 24.x.
 - No blocker remains. Nothing was pushed.
+
+## Exceptional Wave: residual timeline races
+
+Baseline: `ab1e11241167bc5d44bc6a07a22a2c6c78a166ea`
+
+### Decisions
+
+- Unresolved patch overflow now advances a monotonic history generation. Initial and
+  older requests capture that generation and may neither merge entities nor advance
+  their HTTP cursor after overflow. Overflow coalesces an authoritative latest-page
+  recovery through the existing bounded retry primitive; a successful recovery clears
+  superseded patch ordering state. Repeated overflow retains one in-flight/queued unit,
+  uses capped backoff if its own generation becomes stale, and stops its timer on
+  socket cleanup.
+- Timeline retention has one policy for realtime, mutation-result, initial-history,
+  and older-history merges. It reserves a bounded 20-entity recently changed segment
+  and fills the remaining 180 slots from the active latest or older edge. Thus an
+  exposed older page and recent realtime entities coexist, dedupe remains by message
+  ID, and the total stays at 200. Pins are compacted with messages/unresolved patches,
+  so the extra ordering state is bounded.
+
+### TDD evidence
+
+RED:
+
+`npm test -- --run src/chat-workspace-message-window.test.tsx`
+
+Five of ten tests failed before the production change. At 201 distinct unloaded
+entities, edit and delete each failed to trigger authoritative recovery for a delayed
+initial response and for a delayed older response. In the full-window race, realtime
+message 601 disappeared when the delayed third older page merged.
+
+GREEN:
+
+`npm test -- --run src/chat-workspace-message-window.test.tsx`
+
+All ten tests passed. The regressions cover edit and delete overflow against literal
+delayed initial and older responses, exactly one recovery request for the 201-event
+burst, rejection of the stale response, usable subsequent pagination, a delayed full
+older window with realtime arriving first, cursor progression
+`undefined -> 501 -> 401 -> 301`, deduplication, and exactly 200 visible entities.
+
+### Exceptional Wave verification
+
+- `git diff --check`: passed.
+- `npm test -- --run`: 14 files, 65 tests passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed; 24 modules transformed.
+- `go test -race -tags sqlite_fts5 ./...`: passed across all packages.
+- `go vet -tags sqlite_fts5 ./...`: passed with no output.
+- `make check`: passed after `npm ci`; it ran strict typecheck, production build,
+  tagged Go tests, all 65 frontend tests, and the tagged Go binary build.
+
+Exceptional Wave production bundle: HTML 0.39 kB / 0.26 kB gzip; CSS 12.33 kB /
+3.47 kB gzip; JavaScript 48.98 kB / 16.38 kB gzip. No authored production file
+exceeds the 300-line soft limit: `use-workspace.ts` is 300 lines and `timeline.tsx`
+is 250 lines. No deferred feature or plan was touched, and nothing was pushed.
