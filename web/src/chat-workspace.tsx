@@ -109,7 +109,7 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 		setFilePreviewRequest((request) => request + 1);
 	}
 
-	return <WorkspaceShell selectionKey={threadRoot ? `thread-${threadRoot.id}` : `conversation-${state.selectionGeneration}`} contextRequestKey={filePreviewRequest || undefined}
+	return <WorkspaceShell selectionKey={threadRoot ? `thread-${threadRoot.id}` : `conversation-${state.selectionGeneration}`} contextRequestKey={filePreviewRequest || undefined} onContextClose={filePreview ? () => setFilePreview(undefined) : undefined}
 		navigation={<>
 			<header class="brand-block"><h1>Threadhall</h1><div class="brand-actions"><button class="profile-link" type="button" onClick={() => { setFilePreview(undefined); setProfileOpen(true); }}>{user.username}</button><NotificationPermissionControl /><button type="button" onClick={() => void logout().catch((error) => state.setMutationError(errorDetail(error)))}>Sign out</button></div></header>
 			<NewConversationForm onCreate={state.createConversation} onFindUsers={(query, signal) => api.findUsers(query, signal)} />
@@ -132,7 +132,7 @@ export function ChatWorkspace({ api, socketFactory = defaultSocketFactory }: { a
 						replyTo={replyingTo} replyToAuthor={replyingTo ? memberNames.get(replyingTo.author_id) : undefined} onCancelReply={() => setReplyingTo(undefined)} /></>
 				: <div class="empty-workspace"><p>Select a conversation from the navigation, or create the first one.</p></div>}
 		</div>}
-		context={filePreview ? <FilePreview app={filePreview} onClose={() => setFilePreview(undefined)} />
+		context={filePreview ? <FilePreview app={filePreview} />
 			: profileOpen ? <ProfilePanel api={api} user={user} onClose={() => setProfileOpen(false)} />
 			: <ConversationDetail conversation={state.detail} members={state.members} loading={state.messageLoading} loadingMoreMembers={state.memberLoadingMore} error={state.detailError} hasMoreMembers={state.memberCursor !== undefined} onLoadMoreMembers={() => void state.loadMoreMembers()}
 				canDelete={!!selected && selected.kind !== "dm" && (user.admin || selected.created_by === user.id)} onDelete={state.deleteConversation} />}

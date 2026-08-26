@@ -80,4 +80,13 @@ describe("WorkspaceShell desktop panes", () => {
 		view.rerender(<WorkspaceShell contextRequestKey="file-1" navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Preview</span>} />);
 		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).not.toBe("true");
 	});
+
+	it("uses one context-level close action for a file preview", () => {
+		Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: media(false) });
+		const close = vi.fn();
+		render(<WorkspaceShell navigation={<span>Channels</span>} main={<span>Timeline</span>} context={<span>Preview</span>} onContextClose={close} />);
+		fireEvent.click(screen.getByRole("button", { name: "Close details" }));
+		expect(close).toHaveBeenCalledOnce();
+		expect(screen.getByLabelText("Conversation details").getAttribute("aria-hidden")).toBe("true");
+	});
 });

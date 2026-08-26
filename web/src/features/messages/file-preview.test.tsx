@@ -10,7 +10,7 @@ describe("FilePreview", () => {
 			server: "threadhall-files", tool: "preview", resource_uri: "ui://threadhall-file/notes", html: "<h1>Notes</h1><p>Safe</p>",
 			arguments: { filename: "notes.md", content_type: "text/markdown" }, result: {},
 		};
-		render(<FilePreview app={app} onClose={() => undefined} />);
+		render(<FilePreview app={app} />);
 		expect(screen.getByRole("heading", { name: "notes.md" })).toBeTruthy();
 		expect(screen.getByRole("heading", { name: "Notes" })).toBeTruthy();
 		expect(screen.queryByTitle(/Interactive UI/)).toBeNull();

@@ -7,6 +7,7 @@ interface WorkspaceShellProps {
 	context: ComponentChildren;
 	selectionKey?: number | string;
 	contextRequestKey?: number | string;
+	onContextClose?: () => void;
 }
 
 function useMedia(query: string) {
@@ -26,7 +27,7 @@ function focusable(panel: HTMLElement) {
 	return [...panel.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
 }
 
-export function WorkspaceShell({ navigation, main, context, selectionKey, contextRequestKey }: WorkspaceShellProps) {
+export function WorkspaceShell({ navigation, main, context, selectionKey, contextRequestKey, onContextClose }: WorkspaceShellProps) {
 	const compact = useMedia("(max-width: 700px)");
 	const contextDrawer = useMedia("(max-width: 980px)");
 	const [navigationOpen, setNavigationOpen] = useState(false);
@@ -100,6 +101,7 @@ export function WorkspaceShell({ navigation, main, context, selectionKey, contex
 	function closeDrawers(restore: "navigation" | "context" | null) {
 		setNavigationOpen(false);
 		setContextOpen(false);
+		if (restore === "context") onContextClose?.();
 		if (restore === "navigation") navigationOpener.current?.focus();
 		if (restore === "context") contextOpener.current?.focus();
 	}
@@ -123,7 +125,7 @@ export function WorkspaceShell({ navigation, main, context, selectionKey, contex
 			<div class="context-slot">
 				<aside ref={contextPanel} class={`${contextOpen ? "context-pane is-open" : "context-pane"}${contextCollapsed && !contextDrawer ? " is-collapsed" : ""}`} aria-label="Conversation details" aria-hidden={contextHidden} inert={contextHidden || undefined} role={contextDrawer ? "dialog" : undefined}>
 					<button class="drawer-close" type="button" aria-label="Close conversation details" onClick={() => closeDrawers("context")}>Close</button>
-					{!contextCollapsed && <><button class="context-collapse" type="button" aria-label="Hide details" onClick={() => setContextCollapsed(true)}>Hide</button>{context}</>}
+					{!contextCollapsed && <><button class="context-collapse" type="button" aria-label={onContextClose ? "Close details" : "Hide details"} onClick={() => { setContextCollapsed(true); onContextClose?.(); }}>{onContextClose ? "Close" : "Hide"}</button>{context}</>}
 				</aside>
 				{contextCollapsed && !contextDrawer && <button class="context-restore" type="button" aria-label="Show details" onClick={() => setContextCollapsed(false)}>Details</button>}
 			</div>
