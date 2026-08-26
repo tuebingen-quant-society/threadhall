@@ -28,7 +28,9 @@ export function fakeApi(overrides: Record<string, unknown> = {}) {
 		conversation: vi.fn((id: number) => Promise.resolve(id === 2 ? general : research)),
 		members: vi.fn().mockResolvedValue({ members: [{ user_id: 1, username: "ada", joined_at: user.created_at }] }),
 		history: vi.fn((id: number) => Promise.resolve({ messages: id === 2 ? [baseMessage] : [researchMessage] })),
+		threads: vi.fn().mockResolvedValue({ threads: [] }),
 		createChannel: vi.fn(), createDM: vi.fn(),
+		forkConversation: vi.fn(), thread: vi.fn(), sendThreadReply: vi.fn(),
 		sendMessage: vi.fn(), editMessage: vi.fn(), deleteMessage: vi.fn(),
 		...overrides,
 	} as Record<string, ReturnType<typeof vi.fn>>;

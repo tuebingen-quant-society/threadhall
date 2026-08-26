@@ -4,11 +4,12 @@ import { errorDetail } from "../../api/client";
 import { SendIcon } from "./message-icons";
 
 interface ComposerProps {
+	id?: string;
 	conversationName: string;
 	onSend: (body: string, idempotencyKey: string) => Promise<void>;
 }
 
-export function Composer({ conversationName, onSend }: ComposerProps) {
+export function Composer({ id = "message-composer", conversationName, onSend }: ComposerProps) {
 	const [draft, setDraft] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
@@ -45,9 +46,9 @@ export function Composer({ conversationName, onSend }: ComposerProps) {
 		<footer class="composer-wrap">
 			{error && <p class="composer-error" role="alert">{error}</p>}
 			<div class="composer">
-				<label class="sr-only" for="message-composer">Message {conversationName}</label>
+				<label class="sr-only" for={id}>Message {conversationName}</label>
 				<textarea
-					id="message-composer"
+					id={id}
 					value={draft}
 					onInput={(event) => { attemptKey.current = undefined; setDraft(event.currentTarget.value); }}
 					onKeyDown={keyDown}

@@ -21,3 +21,9 @@ export function MoreIcon() {
 		<circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
 	</svg>;
 }
+
+export function ThreadIcon() {
+	return <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+		<path d="M4 5h16v11H9l-5 4Z" /><path d="M8 9h8M8 12h5" />
+	</svg>;
+}

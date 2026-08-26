@@ -41,6 +41,7 @@ function validPayload(type: string, payload: unknown) {
 	case "conversation.member_removed":
 		return Array.isArray(payload) && payload.length === 2 && payload.every((item) => Number.isSafeInteger(item) && item > 0);
 	case "conversation.created":
+	case "conversation.forked":
 		return Array.isArray(payload) && payload.length === 2 && payload.every((item) =>
 			(typeof item === "string" && item.length > 0) || (Number.isSafeInteger(item) && item > 0));
 	default:

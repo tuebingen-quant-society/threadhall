@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { Message, MessageResult, RealtimeEvent } from "../../api/types";
-import { DeleteIcon, EditIcon, MoreIcon } from "./message-icons";
+import { DeleteIcon, EditIcon, MoreIcon, ThreadIcon } from "./message-icons";
 
 export const MAX_CLIENT_MESSAGES = 200;
 const MAX_ENTITY_PATCHES = 200;
@@ -191,11 +191,12 @@ interface TimelineProps {
 	onLoadOlder?: () => void;
 	onEdit: (message: Message, body: string) => void | Promise<void>;
 	onDelete: (message: Message) => void | Promise<void>;
+	onOpenThread: (message: Message) => void;
 }
 
-function MessageRow({ message, own, author, onEdit, onDelete }: {
+function MessageRow({ message, own, author, onEdit, onDelete, onOpenThread }: {
 	message: Message; own: boolean; author: string;
-	onEdit: TimelineProps["onEdit"]; onDelete: TimelineProps["onDelete"];
+	onEdit: TimelineProps["onEdit"]; onDelete: TimelineProps["onDelete"]; onOpenThread: TimelineProps["onOpenThread"];
 }) {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(message.body);
@@ -244,11 +245,12 @@ function MessageRow({ message, own, author, onEdit, onDelete }: {
 					<div><button class="text-button" type="button" onClick={stopEditing}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
 				</form>
 			) : <div class="message-body" dangerouslySetInnerHTML={{ __html: message.rendered_body }} />}
-			{own && !deleted && !editing && <details class="message-actions">
+			{!deleted && !editing && <details class="message-actions">
 				<summary ref={actionTrigger} aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
 				<div>
-					<button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(true)}><EditIcon /></button>
-					<button type="button" aria-label="Delete message" title="Delete" onClick={() => void remove()}><DeleteIcon /></button>
+					<button type="button" aria-label="Open thread" title="Thread" onClick={() => onOpenThread(message)}><ThreadIcon /></button>
+					{own && <button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(true)}><EditIcon /></button>}
+					{own && <button type="button" aria-label="Delete message" title="Delete" onClick={() => void remove()}><DeleteIcon /></button>}
 				</div>
 			</details>}
 		</article>
@@ -268,7 +270,7 @@ export function Timeline(props: TimelineProps) {
 			{props.messages.map((message) => <MessageRow
 				key={message.id} message={message} own={message.author_id === props.currentUserId}
 				author={props.memberNames.get(message.author_id) ?? `User ${message.author_id}`}
-				onEdit={props.onEdit} onDelete={props.onDelete}
+				onEdit={props.onEdit} onDelete={props.onDelete} onOpenThread={props.onOpenThread}
 			/>)}
 			{props.pending?.map((message) => <article class="message-row pending-message" key={message.idempotencyKey}>
 				<header><strong>You</strong><span>Sending…</span></header><p>{message.body}</p>

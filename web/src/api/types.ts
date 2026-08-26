@@ -40,11 +40,33 @@ export interface Message {
 	id: number;
 	conversation_id: number;
 	author_id: number;
+	thread_root_id?: number;
 	body: string;
 	rendered_body: string;
 	created_at: string;
 	edited_at?: string;
 	deleted_at?: string;
+}
+
+export interface ThreadPage {
+	root: Message;
+	replies: Message[];
+	next_after_id?: number;
+}
+
+export interface ThreadSummary {
+	root: Message;
+	reply_count: number;
+}
+
+export interface ThreadList {
+	threads: ThreadSummary[];
+}
+
+export interface ConversationFork {
+	conversation: Conversation;
+	source_conversation_id: number;
+	source_root_message_id: number;
 }
 
 export interface RealtimeEvent {

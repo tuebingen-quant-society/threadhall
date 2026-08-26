@@ -73,11 +73,13 @@ describe("Timeline", () => {
 	it("presents only server-rendered Markdown HTML and edit/delete controls", () => {
 		const edit = vi.fn();
 		const remove = vi.fn();
-		render(<Timeline messages={[first]} currentUserId={4} memberNames={new Map([[4, "ada"]])} onEdit={edit} onDelete={remove} />);
+		const openThread = vi.fn();
+		render(<Timeline messages={[first]} currentUserId={4} memberNames={new Map([[4, "ada"]])} onEdit={edit} onDelete={remove} onOpenThread={openThread} />);
 
 		expect(screen.getByText("hello").tagName).toBe("STRONG");
 		expect(screen.queryByText("**hello**")).toBeNull();
 		fireEvent.click(screen.getByLabelText("Message actions"));
+		fireEvent.click(screen.getByRole("button", { name: "Open thread" }));
 		fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
 		fireEvent.input(screen.getByLabelText("Edit message text"), { target: { value: "changed" } });
 		fireEvent.click(screen.getByRole("button", { name: "Save edit" }));
@@ -86,11 +88,12 @@ describe("Timeline", () => {
 
 		expect(edit).toHaveBeenCalledWith(first, "changed");
 		expect(remove).toHaveBeenCalledWith(first);
+		expect(openThread).toHaveBeenCalledWith(first);
 	});
 
 	it("moves focus into editing and restores a predictable destination", async () => {
 		const remove = vi.fn().mockResolvedValue(undefined);
-		render(<Timeline messages={[first]} currentUserId={4} memberNames={new Map([[4, "ada"]])} onEdit={vi.fn()} onDelete={remove} />);
+		render(<Timeline messages={[first]} currentUserId={4} memberNames={new Map([[4, "ada"]])} onEdit={vi.fn()} onDelete={remove} onOpenThread={vi.fn()} />);
 
 		fireEvent.click(screen.getByLabelText("Message actions"));
 		fireEvent.click(screen.getByRole("button", { name: "Edit message" }));

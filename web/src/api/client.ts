@@ -2,11 +2,14 @@ import type {
 	Conversation,
 	ConversationKind,
 	ConversationPage,
+	ConversationFork,
 	MemberPage,
 	MessagePage,
 	MessageResult,
 	ProblemShape,
 	Session,
+	ThreadPage,
+	ThreadList,
 	UserDirectory,
 } from "./types";
 
@@ -108,14 +111,31 @@ export class ApiClient {
 			method: "POST", body: JSON.stringify({ kind: "dm", other_user_id: otherUserId, idempotency_key: key }),
 		}, signal);
 	}
+	forkConversation(sourceConversationId: number, sourceMessageId: number, kind: Exclude<ConversationKind, "dm">, name: string, key: string, signal?: AbortSignal) {
+		return this.request<ConversationFork>(`/conversations/${sourceConversationId}/forks`, {
+			method: "POST", body: JSON.stringify({ source_message_id: sourceMessageId, kind, name, idempotency_key: key }),
+		}, signal);
+	}
 
 	history(conversationId: number, signal?: AbortSignal, beforeId?: number) {
 		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;
 		return this.request<MessagePage>(`/conversations/${conversationId}/messages?limit=100${before}`, {}, signal);
 	}
+	thread(conversationId: number, rootMessageId: number, signal?: AbortSignal, afterId?: number) {
+		const after = afterId === undefined ? "" : `&after_id=${afterId}`;
+		return this.request<ThreadPage>(`/conversations/${conversationId}/threads/${rootMessageId}?limit=100${after}`, {}, signal);
+	}
+	threads(conversationId: number, signal?: AbortSignal) {
+		return this.request<ThreadList>(`/conversations/${conversationId}/threads`, {}, signal);
+	}
 	sendMessage(conversationId: number, body: string, key: string, signal?: AbortSignal) {
 		return this.request<MessageResult>(`/conversations/${conversationId}/messages`, {
 			method: "POST", body: JSON.stringify({ body, idempotency_key: key }),
+		}, signal);
+	}
+	sendThreadReply(conversationId: number, rootMessageId: number, body: string, key: string, signal?: AbortSignal) {
+		return this.request<MessageResult>(`/conversations/${conversationId}/messages`, {
+			method: "POST", body: JSON.stringify({ body, thread_root_id: rootMessageId, idempotency_key: key }),
 		}, signal);
 	}
 	editMessage(messageId: number, body: string, key: string, signal?: AbortSignal) {

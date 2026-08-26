@@ -81,6 +81,19 @@ describe("ApiClient", () => {
 		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/users?query=lin%20%26%20team&limit=20");
 	});
 
+	it("loads thread replies and creates reference-based forks", async () => {
+		const fetcher = vi.fn()
+			.mockResolvedValueOnce(response({ root: { id: 7 }, replies: [] }))
+			.mockResolvedValueOnce(response({ conversation: { id: 9, kind: "private", name: "follow-up" }, source_conversation_id: 3, source_root_message_id: 7 }, 201));
+		const api = new ApiClient(fetcher);
+
+		await api.thread(3, 7, undefined, 8);
+		await api.forkConversation(3, 7, "private", "follow-up", "fork-key");
+
+		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/conversations/3/threads/7?limit=100&after_id=8");
+		expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ source_message_id: 7, kind: "private", name: "follow-up", idempotency_key: "fork-key" });
+	});
+
 	it("invokes the fetch implementation without an ApiClient receiver", async () => {
 		const receivers: unknown[] = [];
 		const fetcher = function (this: unknown) {

@@ -25,4 +25,17 @@ describe("ConversationList", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Load more conversations" }));
 		expect(loadMore).toHaveBeenCalledTimes(1);
 	});
+
+	it("renders active conversation threads as indented child navigation", () => {
+		const selectThread = vi.fn();
+		render(<ConversationList conversations={conversations} selectedId={2} selectedThreadId={7}
+			threads={[{ root: { id: 7, conversation_id: 2, author_id: 1, body: "Review the signal model", rendered_body: "<p>Review the signal model</p>", created_at: "2026-08-26T10:00:00Z" }, reply_count: 3 }]}
+			onSelect={vi.fn()} onSelectThread={selectThread} />);
+
+		const child = screen.getByRole("button", { name: "Thread: Review the signal model, 3 replies" });
+		expect(child.classList.contains("thread-link")).toBe(true);
+		expect(child.getAttribute("aria-current")).toBe("page");
+		fireEvent.click(child);
+		expect(selectThread).toHaveBeenCalledWith(7);
+	});
 });

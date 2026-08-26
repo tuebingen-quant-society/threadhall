@@ -5,7 +5,7 @@ interface WorkspaceShellProps {
 	navigation: ComponentChildren;
 	main: ComponentChildren;
 	context: ComponentChildren;
-	selectionKey?: number;
+	selectionKey?: number | string;
 }
 
 function useMedia(query: string) {

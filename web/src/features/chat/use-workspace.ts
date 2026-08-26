@@ -10,11 +10,11 @@ import { HistoryRequestGuard, invalidatedHistory } from "./history-request";
 import { createInvalidationCoalescer, type InvalidationCoalescer } from "./invalidation";
 import { ListCoordinator, isAbortError, staleRequest } from "./list-coordinator";
 import { loadConversationPages, loadMemberPages } from "./load-pages";
+import { eventThreadRoot } from "../threads/events";
 
 export interface WorkspaceSocket { start(): void; stop(): void }
 export type WorkspaceSocketFactory = (callbacks: SocketCallbacks) => WorkspaceSocket;
 export const defaultSocketFactory: WorkspaceSocketFactory = (callbacks) => new RealtimeSocket(callbacks);
-
 type Scope = { id: number | undefined; selection: number; fetch: number };
 type SelectedScope = Scope & { id: number };
 type MutationScope = Pick<SelectedScope, "id" | "selection">;
@@ -39,6 +39,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	const [messageError, setMessageError] = useState("");
 	const [mutationError, setMutationError] = useState("");
 	const [connection, setConnection] = useState<ConnectionState>("connecting");
+	const [threadRevision, setThreadRevision] = useState(0);
 
 	const conversationsRef = useRef<Conversation[]>([]);
 	const membersRef = useRef<Member[]>([]);
@@ -50,7 +51,6 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	const dataControllers = useRef(new Set<AbortController>());
 	const mutationControllers = useRef(new Set<AbortController>());
 	const lists = useRef(new ListCoordinator());
-
 	const scopeCurrent = useCallback((scope: Scope, controller?: AbortController) =>
 		scopeRef.current.id === scope.id && scopeRef.current.selection === scope.selection &&
 		scopeRef.current.fetch === scope.fetch && !controller?.signal.aborted, []);
@@ -271,7 +271,8 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 			onStatus: setConnection,
 			onEvent: (event) => {
 				if (event.type.startsWith("conversation.")) coalescer.request();
-				if (event.type.startsWith("message.") && event.conversation_id === scopeRef.current.id) setTimeline((state) => {
+				if (eventThreadRoot(event) !== undefined && event.conversation_id === scopeRef.current.id) setThreadRevision((value) => value + 1);
+				else if (event.type.startsWith("message.") && event.conversation_id === scopeRef.current.id) setTimeline((state) => {
 					const next = applyRealtimeEvent(state, event); historyRequests.current.updateGeneration(next.historyGeneration); return next;
 				});
 			},
@@ -291,7 +292,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	return {
 		conversations, conversationCursor, selectedId, selectionGeneration, detail, members, memberCursor,
 		timeline, messageCursor, pending, conversationLoading, conversationLoadingMore, messageLoading,
-		memberLoadingMore, conversationError, detailError, messageError, mutationError, connection,
+		memberLoadingMore, conversationError, detailError, messageError, mutationError, connection, threadRevision,
 		select, loadMoreConversations, loadMoreMembers, loadOlderMessages, sendMessage,
 		editMessage: (message: Message, body: string) => changeMessage("edit", message, body),
 		deleteMessage: (message: Message) => changeMessage("delete", message), createConversation, setMutationError,
