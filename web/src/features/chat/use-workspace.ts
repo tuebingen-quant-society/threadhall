@@ -5,7 +5,7 @@ import type { ConnectionState, Conversation, Member, Message } from "../../api/t
 import { RealtimeSocket, type SocketCallbacks } from "../../realtime/socket";
 import { appendConversationPage, appendMemberPage } from "../conversations/collection";
 import type { ConversationDraft } from "../conversations/create";
-import { applyRealtimeEvent, mergeHistoryPage, mergeMessageResult, type PendingMessage, queuePending, reconcilePending, type TimelineState } from "../messages/timeline";
+import { applyRealtimeEvent, mergeHistoryPage, mergeMessageResult, mergeOlderHistoryPage, type PendingMessage, queuePending, reconcilePending, type TimelineState } from "../messages/timeline";
 import { createInvalidationCoalescer } from "./invalidation";
 import { ListCoordinator, isAbortError, staleRequest } from "./list-coordinator";
 import { loadConversationPages, loadMemberPages } from "./load-pages";
@@ -17,7 +17,7 @@ export const defaultSocketFactory: WorkspaceSocketFactory = (callbacks) => new R
 type Scope = { id: number | undefined; selection: number; fetch: number };
 type SelectedScope = Scope & { id: number };
 type MutationScope = Pick<SelectedScope, "id" | "selection">;
-const emptyTimeline = (): TimelineState => ({ messages: [], entitySeq: new Map() });
+const emptyTimeline = (): TimelineState => ({ messages: [], entitySeq: new Map(), entityPatches: new Map(), window: "latest" });
 const mutationKey = (operation: string) => `${operation}-${crypto.randomUUID()}`;
 
 export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFactory) {
@@ -168,7 +168,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		try {
 			const page = await api.history(action.scope.id, action.controller.signal, messageCursor);
 			if (!scopeCurrent(action.scope, action.controller)) throw staleRequest();
-			setTimeline((state) => mergeHistoryPage(state, page.messages)); setMessageCursor(page.next_before_id);
+			setTimeline((state) => mergeOlderHistoryPage(state, page.messages)); setMessageCursor(page.next_before_id);
 		} catch (error) {
 			if (scopeCurrent(action.scope, action.controller) && !isAbortError(error)) setMessageError(errorDetail(error));
 		} finally {
@@ -243,9 +243,10 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 					selectionController.current?.abort(); selectionController.current = ticket.controller;
 					if (refreshingHistory) setMessageLoading(true);
 				}
-				refreshingSelection = true;
-				await refreshSelected(scope as SelectedScope, ticket.controller, refreshingHistory);
-			});
+					refreshingSelection = true;
+					await refreshSelected(scope as SelectedScope, ticket.controller, refreshingHistory);
+				});
+			setConversationError("");
 			if (refreshingHistory && scopeCurrent(scope)) { historyReady.current = true; setMessageLoading(false); }
 		} catch (error) {
 			if (!scopeCurrent(scope) || isAbortError(error)) throw staleRequest();

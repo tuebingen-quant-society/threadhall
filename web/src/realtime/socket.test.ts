@@ -43,7 +43,7 @@ describe("RealtimeSocket", () => {
 		vi.useFakeTimers();
 		FakeSocket.instances = [];
 		const message = { id: 2, conversation_id: 1, author_id: 4, body: "HTTP edit", rendered_body: "<p>HTTP edit</p>", created_at: "2026-08-25T12:00:00Z", edited_at: "2026-08-25T12:09:00Z" };
-		let timeline: TimelineState = mergeMessageResult({ messages: [], entitySeq: new Map() }, {
+		let timeline: TimelineState = mergeMessageResult({ messages: [], entitySeq: new Map(), entityPatches: new Map(), window: "latest" }, {
 			message,
 			event: { seq: 9, type: "message.edited", conversation_id: 1, entity_id: 2, payload: {} },
 		});

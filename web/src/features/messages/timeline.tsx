@@ -3,10 +3,18 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Message, MessageResult, RealtimeEvent } from "../../api/types";
 
 export const MAX_CLIENT_MESSAGES = 200;
+const MAX_ENTITY_PATCHES = 200;
+
+type TimelineWindow = "latest" | "older";
+type EntityPatch =
+	| { kind: "edit"; body: string; renderedBody: string; editedAt: string }
+	| { kind: "delete"; deletedAt: string };
 
 export interface TimelineState {
 	messages: Message[];
 	entitySeq: Map<number, number>;
+	entityPatches: Map<number, EntityPatch>;
+	window: TimelineWindow;
 }
 
 export interface PendingMessage {
@@ -23,15 +31,42 @@ function stringField(payload: Record<string, unknown>, field: string) {
 	return typeof payload[field] === "string" ? payload[field] as string : undefined;
 }
 
-function upsert(messages: Message[], item: Message) {
+function upsert(messages: Message[], item: Message, window: TimelineWindow = "latest", pinnedId?: number) {
 	const next = messages.filter((message) => message.id !== item.id);
 	next.push(item);
 	next.sort((left, right) => left.id - right.id);
-	return next.slice(-MAX_CLIENT_MESSAGES);
+	if (next.length <= MAX_CLIENT_MESSAGES) return next;
+	if (window === "latest") return next.slice(-MAX_CLIENT_MESSAGES);
+	const older = next.slice(0, MAX_CLIENT_MESSAGES);
+	if (pinnedId !== undefined && !older.some((message) => message.id === pinnedId)) {
+		older.pop();
+		older.push(item);
+		older.sort((left, right) => left.id - right.id);
+	}
+	return older;
 }
 
 export function mergeMessages(existing: Message[], incoming: Message[]) {
-	return incoming.reduce(upsert, existing);
+	return incoming.reduce((messages, item) => upsert(messages, item), existing);
+}
+
+function recordPatch(patches: Map<number, EntityPatch>, id: number, patch: EntityPatch) {
+	const next = new Map(patches);
+	next.delete(id);
+	next.set(id, patch);
+	while (next.size > MAX_ENTITY_PATCHES) next.delete(next.keys().next().value!);
+	return next;
+}
+
+function applyPatch(item: Message, patch: EntityPatch) {
+	return patch.kind === "edit"
+		? { ...item, body: patch.body, rendered_body: patch.renderedBody, edited_at: patch.editedAt }
+		: { ...item, body: "", rendered_body: "", deleted_at: patch.deletedAt };
+}
+
+function compactState(messages: Message[], entitySeq: Map<number, number>, entityPatches: Map<number, EntityPatch>, window: TimelineWindow) {
+	const retained = new Set([...messages.map((message) => message.id), ...entityPatches.keys()]);
+	return { messages, entitySeq: new Map([...entitySeq].filter(([id]) => retained.has(id))), entityPatches, window };
 }
 
 export function applyRealtimeEvent(state: TimelineState, event: RealtimeEvent): TimelineState {
@@ -39,6 +74,7 @@ export function applyRealtimeEvent(state: TimelineState, event: RealtimeEvent): 
 	const payload = objectPayload(event.payload);
 	if (payload === null) return state;
 	let messages = state.messages;
+	let entityPatches = state.entityPatches;
 	if (event.type === "message.sent") {
 		const author = payload.author_id;
 		const body = stringField(payload, "body");
@@ -48,47 +84,66 @@ export function applyRealtimeEvent(state: TimelineState, event: RealtimeEvent): 
 			messages = upsert(messages, {
 				id: event.entity_id, conversation_id: event.conversation_id, author_id: author,
 				body, rendered_body: rendered, created_at: created,
-			});
+			}, state.window, event.entity_id);
+			if (entityPatches.has(event.entity_id)) {
+				entityPatches = new Map(entityPatches); entityPatches.delete(event.entity_id);
+			}
 		} else return state;
 	} else if (event.type === "message.edited") {
-		if (!messages.some((message) => message.id === event.entity_id)) return state;
 		const body = stringField(payload, "body");
 		const rendered = stringField(payload, "rendered_body");
 		const edited = stringField(payload, "edited_at");
 		if (body !== undefined && rendered !== undefined && edited !== undefined) {
-			messages = messages.map((message) => message.id === event.entity_id
-				? { ...message, body, rendered_body: rendered, edited_at: edited }
-				: message);
+			if (messages.some((message) => message.id === event.entity_id)) {
+				messages = messages.map((message) => message.id === event.entity_id
+					? { ...message, body, rendered_body: rendered, edited_at: edited }
+					: message);
+			} else entityPatches = recordPatch(entityPatches, event.entity_id, {
+				kind: "edit", body, renderedBody: rendered, editedAt: edited,
+			});
 		} else return state;
 	} else if (event.type === "message.deleted") {
-		if (!messages.some((message) => message.id === event.entity_id)) return state;
 		const deleted = stringField(payload, "deleted_at");
-		if (deleted !== undefined) messages = messages.map((message) => message.id === event.entity_id
-			? { ...message, body: "", rendered_body: "", deleted_at: deleted }
-			: message);
+		if (deleted !== undefined && messages.some((message) => message.id === event.entity_id)) {
+			messages = messages.map((message) => message.id === event.entity_id
+				? { ...message, body: "", rendered_body: "", deleted_at: deleted }
+				: message);
+		} else if (deleted !== undefined) entityPatches = recordPatch(entityPatches, event.entity_id, {
+			kind: "delete", deletedAt: deleted,
+		});
 		else return state;
 	} else return state;
-	if (messages === state.messages) return state;
-	const identifiers = new Set(messages.map((message) => message.id));
-	const entitySeq = new Map([...state.entitySeq].filter(([id]) => identifiers.has(id)));
+	const entitySeq = new Map(state.entitySeq);
 	entitySeq.set(event.entity_id, event.seq);
-	return { messages, entitySeq };
+	return compactState(messages, entitySeq, entityPatches, state.window);
 }
 
 export function mergeMessageResult(state: TimelineState, result: MessageResult): TimelineState {
 	if (result.event.seq <= (state.entitySeq.get(result.message.id) ?? 0)) return state;
-	const messages = mergeMessages(state.messages, [result.message]);
-	const identifiers = new Set(messages.map((message) => message.id));
-	const entitySeq = new Map([...state.entitySeq].filter(([id]) => identifiers.has(id)));
+	const messages = upsert(state.messages, result.message, state.window, result.message.id);
+	const entitySeq = new Map(state.entitySeq);
 	entitySeq.set(result.message.id, result.event.seq);
-	return { messages, entitySeq };
+	const entityPatches = new Map(state.entityPatches); entityPatches.delete(result.message.id);
+	return compactState(messages, entitySeq, entityPatches, state.window);
 }
 
-export function mergeHistoryPage(state: TimelineState, incoming: Message[]): TimelineState {
-	const messages = mergeMessages(incoming, state.messages);
-	const identifiers = new Set(messages.map((message) => message.id));
-	return { messages, entitySeq: new Map([...state.entitySeq].filter(([id]) => identifiers.has(id))) };
+function mergeHTTPPage(state: TimelineState, incoming: Message[], window: TimelineWindow): TimelineState {
+	const entityPatches = new Map(state.entityPatches);
+	const patched = incoming.map((item) => {
+		const patch = entityPatches.get(item.id);
+		if (patch === undefined) return item;
+		entityPatches.delete(item.id);
+		return applyPatch(item, patch);
+	});
+	const combined = new Map(patched.map((item) => [item.id, item]));
+	for (const item of state.messages) combined.set(item.id, item);
+	const sorted = [...combined.values()].sort((left, right) => left.id - right.id);
+	const messages = window === "latest" ? sorted.slice(-MAX_CLIENT_MESSAGES) : sorted.slice(0, MAX_CLIENT_MESSAGES);
+	return compactState(messages, state.entitySeq, entityPatches, window);
 }
+
+export const mergeHistoryPage = (state: TimelineState, incoming: Message[]) => mergeHTTPPage(state, incoming, "latest");
+export const mergeOlderHistoryPage = (state: TimelineState, incoming: Message[]) => mergeHTTPPage(state, incoming, "older");
 
 export function queuePending(items: PendingMessage[], idempotencyKey: string, body: string) {
 	if (items.some((item) => item.idempotencyKey === idempotencyKey)) return items;

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/preact";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Message, RealtimeEvent } from "../../api/types";
+import type { TimelineState } from "./timeline";
 import { applyRealtimeEvent, mergeMessageResult, queuePending, reconcilePending, Timeline } from "./timeline";
 
 const first: Message = {
@@ -15,7 +16,7 @@ describe("timeline state", () => {
 			seq: 8, type: "message.sent", conversation_id: 1, entity_id: 3,
 			payload: { author_id: 5, body: "later", rendered_body: "<p>later</p>", created_at: "2026-08-25T12:01:00Z" },
 		};
-		const once = applyRealtimeEvent({ messages: [first], entitySeq: new Map() }, event);
+		const once = applyRealtimeEvent({ messages: [first], entitySeq: new Map(), entityPatches: new Map(), window: "latest" }, event);
 		const twice = applyRealtimeEvent(once, event);
 
 		expect(once.messages.map((message) => message.id)).toEqual([2, 3]);
@@ -24,7 +25,7 @@ describe("timeline state", () => {
 
 	it("keeps HTTP entity sequence separate from the socket replay cursor", () => {
 		const edited = { ...first, body: "HTTP edit", rendered_body: "<p>HTTP edit</p>", edited_at: "2026-08-25T12:09:00Z" };
-		const afterHTTP = mergeMessageResult({ messages: [], entitySeq: new Map() }, {
+		const afterHTTP = mergeMessageResult({ messages: [], entitySeq: new Map(), entityPatches: new Map(), window: "latest" }, {
 			message: edited,
 			event: { seq: 9, type: "message.edited", conversation_id: 1, entity_id: 2, payload: {} },
 		});
@@ -47,6 +48,23 @@ describe("timeline state", () => {
 
 		expect(pending).toHaveLength(1);
 		expect(reconciled).toHaveLength(0);
+	});
+
+	it("bounds unloaded entity edits and tombstones", () => {
+		let state: TimelineState = { messages: [], entitySeq: new Map(), entityPatches: new Map(), window: "latest" };
+		for (let id = 1; id <= 201; id += 1) {
+			state = applyRealtimeEvent(state, {
+				seq: id, type: id % 2 === 0 ? "message.edited" : "message.deleted",
+				conversation_id: 1, entity_id: id,
+				payload: id % 2 === 0
+					? { body: `edit ${id}`, rendered_body: `<p>edit ${id}</p>`, edited_at: "2026-08-25T12:01:00Z" }
+					: { deleted_at: "2026-08-25T12:01:00Z" },
+			});
+		}
+
+		expect(state.entityPatches.size).toBe(200);
+		expect(state.entityPatches.has(1)).toBe(false);
+		expect(state.entityPatches.has(201)).toBe(true);
 	});
 });
 
