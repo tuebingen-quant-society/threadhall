@@ -142,6 +142,7 @@ func newServerHandler(db *sql.DB, writer *store.Writer, cfg config.Config) (*ser
 	httpapi.RegisterMessages(handler, authService, messageService, pump, cfg.PublicURL)
 	httpapi.RegisterRealtime(handler, authService, socket, cfg.PublicURL)
 	httpapi.RegisterAgentWorker(handler, agentStore, pump)
+	httpapi.RegisterCapabilities(handler, authService, agentStore)
 	return &serverHandler{Handler: handler, pump: pump, hub: hub}, nil
 }
 

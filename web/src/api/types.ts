@@ -33,7 +33,41 @@ export interface Conversation {
 export interface Member {
 	user_id: number;
 	username: string;
+	principal_kind: "human" | "agent";
 	joined_at: string;
+}
+
+export interface Capability {
+	kind: "plugin" | "skill";
+	id: string;
+	name: string;
+	description: string;
+}
+
+export interface CapabilityPage {
+	capabilities: Capability[];
+}
+
+export interface InlineApp {
+	server: string;
+	tool: string;
+	resource_uri: string;
+	html: string;
+	arguments: unknown;
+	result: unknown;
+}
+
+export interface QuestionOption {
+	label: string;
+	description: string;
+}
+
+export interface Question {
+	id: string;
+	header: string;
+	question: string;
+	is_other: boolean;
+	options: QuestionOption[];
 }
 
 export interface Message {
@@ -41,11 +75,14 @@ export interface Message {
 	conversation_id: number;
 	author_id: number;
 	thread_root_id?: number;
+	reply_to_message_id?: number;
 	body: string;
 	rendered_body: string;
 	created_at: string;
 	edited_at?: string;
 	deleted_at?: string;
+	inline_apps?: InlineApp[];
+	questions?: Question[];
 }
 
 export interface ThreadPage {

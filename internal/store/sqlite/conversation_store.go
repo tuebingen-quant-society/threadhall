@@ -67,7 +67,7 @@ func (s *ConversationStore) Detail(ctx context.Context, userID, conversationID i
 
 func (s *ConversationStore) ListMembers(ctx context.Context, userID, conversationID, beforeID int64, limit int) (conversation.MemberPage, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT users.id, users.username, member.joined_at
+		SELECT users.id, users.username, users.principal_kind, member.joined_at
 		FROM conversation_members member JOIN users ON users.id = member.user_id
 		WHERE member.conversation_id = ? AND (? = 0 OR users.id < ?)
 		AND EXISTS(SELECT 1 FROM conversation_members caller
@@ -81,7 +81,7 @@ func (s *ConversationStore) ListMembers(ctx context.Context, userID, conversatio
 	for rows.Next() {
 		var member conversation.Member
 		var joinedAt int64
-		if err := rows.Scan(&member.UserID, &member.Username, &joinedAt); err != nil {
+		if err := rows.Scan(&member.UserID, &member.Username, &member.PrincipalKind, &joinedAt); err != nil {
 			return conversation.MemberPage{}, err
 		}
 		member.JoinedAt = time.Unix(joinedAt, 0).UTC()

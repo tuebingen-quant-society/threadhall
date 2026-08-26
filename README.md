@@ -66,10 +66,25 @@ threads create tasks. Passive messages do not. To enforce a human-only area:
 ```
 
 This policy denies new invocations and cancels queued tasks before a worker can
-claim their context. Native question cards, approvals, and file artifacts are
-still roadmap work; unsupported interaction requests fail visibly instead of
-leaving a permanent progress message. See the
+claim their context. Codex multiple-choice questions become durable native
+cards. An answer is posted as a linked `@codex` reply and starts a fresh,
+bounded turn, so a cheap worker never has to keep a paused Codex process alive.
+Secret input and unsupported interaction requests fail closed and visibly.
+Approvals and file artifacts remain roadmap work. See the
 [real Codex verification record](docs/verification/codex-teammate.md).
+
+The worker also discovers the enabled, installed Agent Plugins and skills from
+the local Codex app-server. Threadhall stores only the bounded catalog and
+exposes it to conversations where that agent has an explicit grant. In the
+composer, use `@` for members, `/plugin` for canonical `plugin://` references,
+and `/skill` for installed skills.
+
+MCP Apps returned by a completed plugin tool call are stored with the agent
+message and rendered inline. The first host boundary supports initialization,
+tool input, and tool result notifications in an opaque-origin iframe. It denies
+network access, form submission, same-origin access, and UI-initiated tool
+calls; a durable interactive tool proxy is intentionally deferred until it can
+preserve the same conversation and agent authorization checks.
 
 Threadhall is stewarded by the Tübingen Quant Society and licensed under
 [AGPL-3.0](LICENSE).

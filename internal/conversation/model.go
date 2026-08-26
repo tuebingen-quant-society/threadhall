@@ -57,9 +57,10 @@ type ConversationPage struct {
 
 // Member is a bounded public membership projection.
 type Member struct {
-	UserID   int64     `json:"user_id"`
-	Username string    `json:"username"`
-	JoinedAt time.Time `json:"joined_at"`
+	UserID        int64     `json:"user_id"`
+	Username      string    `json:"username"`
+	PrincipalKind string    `json:"principal_kind"`
+	JoinedAt      time.Time `json:"joined_at"`
 }
 
 // ListMembers is a descending-user-ID keyset page request.

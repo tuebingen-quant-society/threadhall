@@ -23,9 +23,10 @@ func TestMessageHTTPRoutesUseAuthenticatedActorAndServerRenderedResults(t *testi
 	csrf := tokenString(0x51)
 
 	send := messageJSONMutation(t, handler, http.MethodPost, "/api/v1/conversations/3/messages",
-		map[string]any{"body": "hello", "thread_root_id": 7, "idempotency_key": "send-1"}, csrf, true)
+		map[string]any{"body": "hello", "thread_root_id": 7, "reply_to_message_id": 6, "idempotency_key": "send-1"}, csrf, true)
 	if send.Code != http.StatusCreated || api.sent.ConversationID != 3 || api.sent.AuthorID != 4 ||
-		api.sent.Body != "hello" || api.sent.ThreadRootID == nil || *api.sent.ThreadRootID != 7 || send.Header().Get("Cache-Control") != "no-store" {
+		api.sent.Body != "hello" || api.sent.ThreadRootID == nil || *api.sent.ThreadRootID != 7 ||
+		api.sent.ReplyToMessageID == nil || *api.sent.ReplyToMessageID != 6 || send.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("send = status %d command %#v headers %#v; body=%s", send.Code, api.sent, send.Header(), send.Body.String())
 	}
 	var returned message.Result

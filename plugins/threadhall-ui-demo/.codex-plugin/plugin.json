@@ -1,0 +1,25 @@
+{
+  "name": "threadhall-ui-demo",
+  "version": "0.1.0",
+  "description": "Project-scoped MCP App used to verify Threadhall's inline plugin UI path.",
+  "author": {
+    "name": "Tuebingen Quant Society",
+    "url": "https://github.com/tuebingen-quant-society"
+  },
+  "repository": "https://github.com/tuebingen-quant-society/threadhall",
+  "license": "MIT",
+  "keywords": ["threadhall", "mcp-app", "agent-plugin"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Threadhall UI Demo",
+    "shortDescription": "Verify inline MCP App rendering in Threadhall.",
+    "longDescription": "A project-scoped, network-free MCP tool and interactive UI resource for end-to-end validation of the Threadhall agent integration.",
+    "developerName": "Tuebingen Quant Society",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read"],
+    "defaultPrompt": [
+      "Show the Threadhall project brief."
+    ]
+  }
+}

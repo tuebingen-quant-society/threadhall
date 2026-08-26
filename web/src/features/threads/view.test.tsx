@@ -9,13 +9,31 @@ const root: Message = { id: 7, conversation_id: 3, author_id: 1, body: "root", r
 const reply: Message = { id: 8, conversation_id: 3, author_id: 2, thread_root_id: 7, body: "reply", rendered_body: "<p>reply</p>", created_at: "2026-08-26T10:01:00Z" };
 
 describe("ThreadView", () => {
+	it("answers an agent question as a linked thread reply", async () => {
+		const questionRoot: Message = { ...root, questions: [{
+			id: "scope", header: "Scope", question: "Which scope?", is_other: false,
+			options: [{ label: "Thread", description: "Use this thread." }],
+		}] };
+		const api = {
+			thread: vi.fn().mockResolvedValue({ root: questionRoot, replies: [] }),
+			sendThreadReply: vi.fn().mockResolvedValue({ message: reply, event: { seq: 4 } }),
+		} as unknown as ApiClient;
+		render(<ThreadView api={api} conversationId={3} root={questionRoot} currentUserId={2} memberNames={new Map([[1, "codex"]])}
+			members={[]} capabilities={[]} revision={0} onFork={vi.fn()} />);
+
+		fireEvent.click(await screen.findByRole("button", { name: /Thread/ }));
+		await waitFor(() => expect(api.sendThreadReply).toHaveBeenCalledWith(
+			3, 7, '@codex Answer to "Which scope?": Thread', expect.any(String), undefined, 7,
+		));
+	});
 	it("loads replies, sends in the main thread stream, and creates a channel fork", async () => {
 		const api = {
 			thread: vi.fn().mockResolvedValue({ root, replies: [reply] }),
 			sendThreadReply: vi.fn().mockResolvedValue({ message: { ...reply, id: 9, body: "new reply", rendered_body: "<p>new reply</p>" }, event: { seq: 4 } }),
 		} as unknown as ApiClient;
 		const onFork = vi.fn().mockResolvedValue(undefined);
-		render(<ThreadView api={api} conversationId={3} root={root} memberNames={new Map([[1, "ada"], [2, "lin"]])} revision={0} onFork={onFork} />);
+		render(<ThreadView api={api} conversationId={3} root={root} currentUserId={1} memberNames={new Map([[1, "ada"], [2, "lin"]])}
+			members={[{ user_id: 1, username: "ada", principal_kind: "human", joined_at: root.created_at }]} capabilities={[]} revision={0} onFork={onFork} />);
 
 		await screen.findByText("reply");
 		const composer = screen.getByRole("textbox", { name: "Message thread" });

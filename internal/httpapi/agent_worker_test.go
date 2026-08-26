@@ -44,14 +44,30 @@ func TestAgentWorkerRequiresCanonicalBearerAndCompletesOwnedTask(t *testing.T) {
 		t.Fatal("handler did not hash the decoded bearer token")
 	}
 
+	capabilities := httptest.NewRequest(http.MethodPost, "/api/v1/agent/capabilities",
+		strings.NewReader(`{"capabilities":[{"kind":"plugin","id":"drive@example","name":"Drive","description":"Files"}]}`))
+	capabilities.Header.Set("Authorization", "Bearer "+token)
+	capabilities.Header.Set("Content-Type", "application/json")
+	capabilityResponse := httptest.NewRecorder()
+	mux.ServeHTTP(capabilityResponse, capabilities)
+	if capabilityResponse.Code != http.StatusNoContent || len(api.capabilities) != 1 || api.capabilities[0].ID != "drive@example" {
+		t.Fatalf("capability sync = %d %#v %s", capabilityResponse.Code, api.capabilities, capabilityResponse.Body.String())
+	}
+
 	complete := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/9/complete",
-		strings.NewReader(`{"output":"## Done","runtime_thread_id":"019d"}`))
+		strings.NewReader(`{"output":"## Done","runtime_thread_id":"019d","apps":[{"server":"forms","tool":"ask","resource_uri":"ui://forms/ask","html":"<form></form>","arguments":{},"result":{}}],"questions":[{"id":"scope","header":"Scope","question":"Which scope?","is_other":false,"options":[{"label":"Channel","description":"Current channel"}]}]}`))
 	complete.Header.Set("Authorization", "Bearer "+token)
 	complete.Header.Set("Content-Type", "application/json")
 	completed := httptest.NewRecorder()
 	mux.ServeHTTP(completed, complete)
 	if completed.Code != http.StatusNoContent || api.completion.TaskID != 9 || api.completion.Output != "## Done" {
 		t.Fatalf("complete = %d %#v %s", completed.Code, api.completion, completed.Body.String())
+	}
+	if len(api.completion.Apps) != 1 || api.completion.Apps[0].ResourceURI != "ui://forms/ask" {
+		t.Fatalf("completion apps = %#v", api.completion.Apps)
+	}
+	if len(api.completion.Questions) != 1 || api.completion.Questions[0].ID != "scope" {
+		t.Fatalf("completion questions = %#v", api.completion.Questions)
 	}
 	fail := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/9/fail",
 		strings.NewReader(`{"reason":"interaction_unsupported"}`))
@@ -87,11 +103,17 @@ func TestAgentWorkerRejectsUnknownAndOversizedCompletionFields(t *testing.T) {
 }
 
 type fakeAgentWorkerAPI struct {
-	work       agenttask.Work
-	found      bool
-	tokenHash  [32]byte
-	completion agenttask.Completion
-	failure    agenttask.Failure
+	work         agenttask.Work
+	found        bool
+	tokenHash    [32]byte
+	completion   agenttask.Completion
+	failure      agenttask.Failure
+	capabilities []agenttask.Capability
+}
+
+func (f *fakeAgentWorkerAPI) ReplaceCapabilities(_ context.Context, hash [32]byte, capabilities []agenttask.Capability, _ time.Time) error {
+	f.tokenHash, f.capabilities = hash, capabilities
+	return nil
 }
 
 func (f *fakeAgentWorkerAPI) Claim(_ context.Context, hash [32]byte, _ time.Time) (agenttask.Work, bool, error) {

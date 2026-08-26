@@ -26,16 +26,22 @@ describe("ConversationList", () => {
 		expect(loadMore).toHaveBeenCalledTimes(1);
 	});
 
-	it("renders active conversation threads as indented child navigation", () => {
+	it("renders every conversation's threads by default and lets each group collapse", () => {
 		const selectThread = vi.fn();
-		render(<ConversationList conversations={conversations} selectedId={2} selectedThreadId={7}
-			threads={[{ root: { id: 7, conversation_id: 2, author_id: 1, body: "Review the signal model", rendered_body: "<p>Review the signal model</p>", created_at: "2026-08-26T10:00:00Z" }, reply_count: 3 }]}
+		const thread = { root: { id: 7, conversation_id: 2, author_id: 1, body: "Review the signal model", rendered_body: "<p>Review the signal model</p>", created_at: "2026-08-26T10:00:00Z" }, reply_count: 3 };
+		render(<ConversationList conversations={conversations} selectedId={1} selectedThreadId={7}
+			threadsByConversation={new Map([[2, [thread]]])}
 			onSelect={vi.fn()} onSelectThread={selectThread} />);
 
 		const child = screen.getByRole("button", { name: "Thread: Review the signal model, 3 replies" });
 		expect(child.classList.contains("thread-link")).toBe(true);
 		expect(child.getAttribute("aria-current")).toBe("page");
 		fireEvent.click(child);
-		expect(selectThread).toHaveBeenCalledWith(7);
+		expect(selectThread).toHaveBeenCalledWith(conversations[0], thread);
+
+		fireEvent.click(screen.getByRole("button", { name: "Collapse threads for general" }));
+		expect(screen.queryByRole("button", { name: "Thread: Review the signal model, 3 replies" })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "Expand threads for general" }));
+		expect(screen.getByRole("button", { name: "Thread: Review the signal model, 3 replies" })).toBeTruthy();
 	});
 });

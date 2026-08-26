@@ -24,7 +24,8 @@ func NewService(repository Repository, now func() time.Time) (*Service, error) {
 
 func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 	if command.ConversationID <= 0 || command.AuthorID <= 0 || !ValidBody(command.Body) ||
-		!ValidIdempotencyKey(command.IdempotencyKey) || (command.ThreadRootID != nil && *command.ThreadRootID <= 0) {
+		!ValidIdempotencyKey(command.IdempotencyKey) || (command.ThreadRootID != nil && *command.ThreadRootID <= 0) ||
+		(command.ReplyToMessageID != nil && *command.ReplyToMessageID <= 0) {
 		return Result{}, ErrInvalidInput
 	}
 	rendered, err := RenderMarkdown(command.Body)
@@ -33,8 +34,8 @@ func (s *Service) Send(ctx context.Context, command Send) (Result, error) {
 	}
 	return s.repository.Send(ctx, SendRecord{
 		ConversationID: command.ConversationID, AuthorID: command.AuthorID,
-		ThreadRootID: command.ThreadRootID,
-		Body:         command.Body, RenderedBody: rendered, IdempotencyKey: command.IdempotencyKey,
+		ThreadRootID: command.ThreadRootID, ReplyToMessageID: command.ReplyToMessageID,
+		Body: command.Body, RenderedBody: rendered, IdempotencyKey: command.IdempotencyKey,
 		Mentions:  agenttask.MentionedAgents(command.Body),
 		CreatedAt: s.now().UTC(),
 	})

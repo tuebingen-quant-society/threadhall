@@ -16,6 +16,7 @@ var (
 type SendRecord struct {
 	ConversationID, AuthorID int64
 	ThreadRootID             *int64
+	ReplyToMessageID         *int64
 	Body, RenderedBody       string
 	IdempotencyKey           string
 	Mentions                 []string

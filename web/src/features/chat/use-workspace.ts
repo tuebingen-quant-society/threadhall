@@ -181,11 +181,11 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		}
 	}
 
-	async function sendMessage(body: string, key: string) {
+	async function sendMessage(body: string, key: string, replyToMessageId?: number) {
 		const action = captureMutation(); if (action === null) return;
 		setPending((items) => queuePending(items, key, body));
 		try {
-			const result = await api.sendMessage(action.scope.id, body, key, action.controller.signal);
+			const result = await api.sendMessage(action.scope.id, body, key, action.controller.signal, replyToMessageId);
 			if (!mutationCurrent(action.scope, action.controller)) throw staleRequest();
 			setTimeline((state) => mergeMessageResult(state, result)); setPending((items) => reconcilePending(items, key));
 		} catch (error) {

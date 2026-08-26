@@ -24,6 +24,8 @@ func TestOpenAppliesCoreMigration(t *testing.T) {
 		"users", "sessions", "invites", "conversations",
 		"conversation_members", "conversation_mutations", "conversation_forks", "conversation_fork_mutations", "messages", "message_mutations", "events",
 		"agents", "agent_conversation_grants", "agent_tasks",
+		"agent_capabilities",
+		"message_apps",
 	}
 	for _, table := range wantTables {
 		var count int

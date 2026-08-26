@@ -150,6 +150,32 @@ describe("ChatWorkspace send resync races", () => {
 });
 
 describe("ChatWorkspace selection generations", () => {
+	it("scopes plugin completion to the selected conversation's agent catalog", async () => {
+		const capabilities = vi.fn((id: number) => Promise.resolve({ capabilities: id === 2
+			? [{ kind: "plugin", id: "drive@official", name: "Google Drive", description: "Search files" }]
+			: [{ kind: "plugin", id: "notion@official", name: "Notion", description: "Search pages" }] }));
+		const api = fakeApi({
+			capabilities,
+			members: vi.fn().mockResolvedValue({ members: [
+				{ user_id: 1, username: "ada", principal_kind: "human", joined_at: user.created_at },
+				{ user_id: 9, username: "codex", principal_kind: "agent", joined_at: user.created_at },
+			] }),
+		});
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await ready();
+
+		const composer = screen.getByLabelText("Message general");
+		fireEvent.input(composer, { target: { value: "/plugin drive" } });
+		expect(await screen.findByRole("option", { name: /Google Drive/ })).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "research, public channel" }));
+		await screen.findByText("research note");
+		fireEvent.input(screen.getByLabelText("Message research"), { target: { value: "/plugin notion" } });
+		expect(await screen.findByRole("option", { name: /Notion/ })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: /Google Drive/ })).toBeNull();
+	});
+
 	it("does not merge history from a conversation switched away during load", async () => {
 		const oldHistory = deferred<{ messages: (typeof baseMessage)[] }>();
 		const api = fakeApi({ history: vi.fn((id: number) => id === 2 ? oldHistory.promise : Promise.resolve({ messages: [researchMessage] })) });

@@ -73,8 +73,8 @@ func (c *Client) Progress(ctx context.Context, taskID int64, summary string) err
 	return c.post(ctx, taskID, "progress", map[string]string{"summary": summary})
 }
 
-func (c *Client) Complete(ctx context.Context, taskID int64, output, runtimeID string) error {
-	return c.post(ctx, taskID, "complete", map[string]string{"output": output, "runtime_thread_id": runtimeID})
+func (c *Client) Complete(ctx context.Context, taskID int64, output, runtimeID string, apps []agenttask.InlineApp, questions []agenttask.Question) error {
+	return c.post(ctx, taskID, "complete", agenttask.Completion{Output: output, RuntimeThreadID: runtimeID, Apps: apps, Questions: questions})
 }
 
 func (c *Client) Fail(ctx context.Context, taskID int64, failure error) error {
@@ -83,6 +83,27 @@ func (c *Client) Fail(ctx context.Context, taskID int64, failure error) error {
 		reason = "interaction_unsupported"
 	}
 	return c.post(ctx, taskID, "fail", map[string]string{"reason": reason})
+}
+
+func (c *Client) SyncCapabilities(ctx context.Context, capabilities []agenttask.Capability) error {
+	encoded, err := json.Marshal(agenttask.CapabilityPage{Capabilities: capabilities})
+	if err != nil {
+		return err
+	}
+	request, err := c.request(ctx, http.MethodPost, "/api/v1/agent/capabilities", bytes.NewReader(encoded))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return fmt.Errorf("sync Threadhall capabilities: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		return responseError("sync Threadhall capabilities", response)
+	}
+	return nil
 }
 
 func (c *Client) post(ctx context.Context, taskID int64, action string, payload any) error {

@@ -56,7 +56,8 @@ func (h *messageHandler) send(w http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	result, err := h.api.Send(request.Context(), message.Send{
 		ConversationID: prepared.conversationID, AuthorID: user.ID,
-		ThreadRootID: prepared.body.ThreadRootID, Body: prepared.body.Body, IdempotencyKey: prepared.body.IdempotencyKey,
+		ThreadRootID: prepared.body.ThreadRootID, ReplyToMessageID: prepared.body.ReplyToMessageID,
+		Body: prepared.body.Body, IdempotencyKey: prepared.body.IdempotencyKey,
 	})
 	if writeMessageProblem(w, err) {
 		return

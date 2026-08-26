@@ -20,7 +20,7 @@ export function ConversationDetail({ conversation, members, loading, loadingMore
 			<div class="members-heading"><h3>Members</h3><span>{members.length}</span></div>
 			{loading && <p class="muted">Loading details…</p>}
 			{error && <p class="inline-error" role="alert">{error}</p>}
-			<ul class="member-list">{members.map((member) => <li key={member.user_id}><span class="member-mark" aria-hidden="true">{member.username.slice(0, 1).toUpperCase()}</span><span><strong>{member.username}</strong><small>User {member.user_id}</small></span></li>)}</ul>
+			<ul class="member-list">{members.map((member) => <li id={`member-${member.user_id}`} key={member.user_id}><span class="member-mark" aria-hidden="true">{member.username.slice(0, 1).toUpperCase()}</span><span><strong>{member.username}</strong><small>{member.principal_kind === "agent" ? "Agent teammate" : `User ${member.user_id}`}</small></span></li>)}</ul>
 			{hasMoreMembers && <button class="load-more-members" type="button" disabled={loadingMoreMembers} onClick={onLoadMoreMembers}>{loadingMoreMembers ? "Loading…" : "Load more members"}</button>}
 		</div>
 	);

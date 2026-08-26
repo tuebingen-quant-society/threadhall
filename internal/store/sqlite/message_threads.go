@@ -10,7 +10,7 @@ import (
 
 func (s *MessageStore) Thread(ctx context.Context, query message.Thread) (message.ThreadPage, error) {
 	root, err := scanMessage(s.db.QueryRowContext(ctx, `SELECT
-		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.body, m.rendered_body,
+		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.reference_message_id, m.body, m.rendered_body,
 		m.created_at, m.edited_at, m.deleted_at
 		FROM messages m JOIN conversation_members member
 			ON member.conversation_id = m.conversation_id AND member.user_id = ?
@@ -23,7 +23,7 @@ func (s *MessageStore) Thread(ctx context.Context, query message.Thread) (messag
 		return message.ThreadPage{}, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.body, m.rendered_body,
+		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.reference_message_id, m.body, m.rendered_body,
 		m.created_at, m.edited_at, m.deleted_at
 		FROM messages m JOIN conversation_members member
 			ON member.conversation_id = m.conversation_id AND member.user_id = ?
@@ -49,5 +49,15 @@ func (s *MessageStore) Thread(ctx context.Context, query message.Thread) (messag
 		page.Replies = page.Replies[:query.Limit]
 		page.NextAfterID = page.Replies[query.Limit-1].ID
 	}
+	all := make([]message.Message, 0, 1+len(page.Replies))
+	all = append(all, page.Root)
+	all = append(all, page.Replies...)
+	if err := s.attachInlineApps(ctx, all); err != nil {
+		return message.ThreadPage{}, err
+	}
+	if err := s.attachQuestions(ctx, all); err != nil {
+		return message.ThreadPage{}, err
+	}
+	page.Root, page.Replies = all[0], all[1:]
 	return page, nil
 }

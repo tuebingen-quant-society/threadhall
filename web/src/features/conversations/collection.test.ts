@@ -8,7 +8,7 @@ function conversation(id: number): Conversation {
 }
 
 function member(user_id: number): Member {
-	return { user_id, username: `member-${user_id}`, joined_at: "2026-08-25T12:00:00Z" };
+	return { user_id, username: `member-${user_id}`, principal_kind: "human", joined_at: "2026-08-25T12:00:00Z" };
 }
 
 describe("bounded conversation collections", () => {

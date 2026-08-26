@@ -11,6 +11,14 @@ const first: Message = {
 };
 
 describe("timeline state", () => {
+	it("applies inline MCP Apps from the completing agent event", () => {
+		const inline_apps = [{ server: "forms", tool: "ask", resource_uri: "ui://forms/ask", html: "<form></form>", arguments: {}, result: {} }];
+		const state = applyRealtimeEvent({ messages: [first], entitySeq: new Map(), entityPatches: new Map(), pinnedIds: new Set(), historyGeneration: 0, window: "latest" }, {
+			seq: 8, type: "message.edited", conversation_id: 1, entity_id: first.id,
+			payload: { body: "Choose", rendered_body: "<p>Choose</p>", edited_at: "2026-08-25T12:01:00Z", inline_apps },
+		});
+		expect(state.messages[0].inline_apps).toEqual(inline_apps);
+	});
 	it("inserts events chronologically and deduplicates sequence and entity", () => {
 		const event: RealtimeEvent = {
 			seq: 8, type: "message.sent", conversation_id: 1, entity_id: 3,
@@ -70,6 +78,65 @@ describe("timeline state", () => {
 });
 
 describe("Timeline", () => {
+	it("renders durable agent questions and reports the selected answer", () => {
+		const onQuestionAnswer = vi.fn();
+		const message: Message = { ...first, questions: [{
+			id: "scope", header: "Scope", question: "Where should I look?", is_other: true,
+			options: [{ label: "This channel", description: "Use only this conversation." }],
+		}] };
+		render(<Timeline messages={[message]} currentUserId={4} memberNames={new Map([[4, "codex"]])}
+			onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} onQuestionAnswer={onQuestionAnswer} />);
+
+		expect(screen.getByText("Where should I look?")).toBeTruthy();
+		expect(screen.queryByText("Scope", { selector: ".question-card > strong" })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /This channel/ }));
+		expect(onQuestionAnswer).toHaveBeenCalledWith(message, message.questions![0], "This channel");
+	});
+	it("disables a question after the current user posts its linked answer", () => {
+		const question = { id: "scope", header: "Scope", question: "Where?", is_other: false,
+			options: [{ label: "Here", description: "This channel." }] };
+		const message: Message = { ...first, questions: [question] };
+		const answer: Message = { ...first, id: 3, author_id: 9, reply_to_message_id: first.id,
+			body: '@codex Answer to "Where?": Here', rendered_body: '<p>answer</p>' };
+		render(<Timeline messages={[message, answer]} currentUserId={9} memberNames={new Map([[4, "codex"], [9, "admin"]])}
+			onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} onQuestionAnswer={vi.fn()} />);
+
+		const selected = screen.getByRole("button", { name: /Here/ }) as HTMLButtonElement;
+		expect(selected.disabled).toBe(true);
+		expect(selected.classList.contains("selected")).toBe(true);
+		expect(screen.queryByText("Answered: Here")).toBeNull();
+	});
+	it("links reply previews to the original and exposes the reply action", () => {
+		const reply = { ...first, id: 3, body: "linked reply", rendered_body: "<p>linked reply</p>", reply_to_message_id: first.id };
+		const onReply = vi.fn();
+		render(<Timeline messages={[first, reply]} currentUserId={4} memberNames={new Map([[4, "ada"]])}
+			onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} onReply={onReply} />);
+
+		const link = screen.getByRole("link", { name: /Replying to ada.*hello/ });
+		expect(link.getAttribute("href")).toBe("#message-2");
+		fireEvent.click(screen.getAllByLabelText("Message actions")[1]);
+		fireEvent.click(screen.getAllByRole("button", { name: "Reply to message" })[1]);
+		expect(onReply).toHaveBeenCalledWith(reply);
+	});
+	it("shows generated MCP UI inline with its agent message", () => {
+		const message = { ...first, inline_apps: [{ server: "forms", tool: "ask", resource_uri: "ui://forms/ask", html: "<form></form>", arguments: {}, result: {} }] };
+		render(<Timeline messages={[message]} currentUserId={4} memberNames={new Map([[4, "codex"]])} onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} />);
+		expect(screen.getByTitle("Interactive UI from forms")).toBeTruthy();
+	});
+	it("links known member mentions without rewriting code or unknown names", () => {
+		const message = {
+			...first,
+			body: "Ask @lin, not `@lin` or @outsider.",
+			rendered_body: "<p>Ask @lin, not <code>@lin</code> or @outsider.</p>",
+		};
+		render(<Timeline messages={[message]} currentUserId={4} memberNames={new Map([[4, "ada"], [7, "lin"]])} onEdit={vi.fn()} onDelete={vi.fn()} onOpenThread={vi.fn()} />);
+
+		const mention = screen.getByRole("link", { name: "@lin" });
+		expect(mention.getAttribute("href")).toBe("#member-7");
+		expect(screen.getByText("@lin", { selector: "code" })).not.toBeNull();
+		expect(screen.getByText(/@outsider/)).not.toBeNull();
+	});
+
 	it("presents only server-rendered Markdown HTML and edit/delete controls", () => {
 		const edit = vi.fn();
 		const remove = vi.fn();

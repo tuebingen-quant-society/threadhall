@@ -62,6 +62,17 @@ describe("ApiClient", () => {
 		expect(fetcher.mock.calls[2][1].method).toBe("DELETE");
 	});
 
+	it("sends an optional linked reply reference", async () => {
+		const fetcher = vi.fn().mockResolvedValue(response({ message: { id: 10 }, event: { seq: 10 } }, 201));
+		const api = new ApiClient(fetcher);
+
+		await api.sendMessage(3, "linked reply", "reply-key", undefined, 9);
+
+		expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+			body: "linked reply", idempotency_key: "reply-key", reply_to_message_id: 9,
+		});
+	});
+
 	it("preserves conversation and member pagination cursors", async () => {
 		const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({ conversations: [], members: [] })));
 		const api = new ApiClient(fetcher);
@@ -92,6 +103,14 @@ describe("ApiClient", () => {
 
 		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/conversations/3/threads/7?limit=100&after_id=8");
 		expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ source_message_id: 7, kind: "private", name: "follow-up", idempotency_key: "fork-key" });
+	});
+
+	it("loads only the selected conversation's agent capabilities", async () => {
+		const page = { capabilities: [{ kind: "plugin", id: "drive", name: "Google Drive", description: "Search files" }] };
+		const fetcher = vi.fn().mockResolvedValue(response(page));
+
+		await expect(new ApiClient(fetcher).capabilities(7)).resolves.toEqual(page);
+		expect(fetcher.mock.calls[0][0]).toBe("/api/v1/conversations/7/capabilities");
 	});
 
 	it("invokes the fetch implementation without an ApiClient receiver", async () => {

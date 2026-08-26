@@ -3,6 +3,7 @@ import type {
 	ConversationKind,
 	ConversationPage,
 	ConversationFork,
+	CapabilityPage,
 	MemberPage,
 	MessagePage,
 	MessageResult,
@@ -101,6 +102,9 @@ export class ApiClient {
 		const before = beforeId === undefined ? "" : `&before_id=${beforeId}`;
 		return this.request<MemberPage>(`/conversations/${id}/members?limit=100${before}`, {}, signal);
 	}
+	capabilities(id: number, signal?: AbortSignal) {
+		return this.request<CapabilityPage>(`/conversations/${id}/capabilities`, {}, signal);
+	}
 	createChannel(kind: Exclude<ConversationKind, "dm">, name: string, key: string, signal?: AbortSignal) {
 		return this.request<Conversation>("/conversations", {
 			method: "POST", body: JSON.stringify({ kind, name, idempotency_key: key }),
@@ -128,14 +132,14 @@ export class ApiClient {
 	threads(conversationId: number, signal?: AbortSignal) {
 		return this.request<ThreadList>(`/conversations/${conversationId}/threads`, {}, signal);
 	}
-	sendMessage(conversationId: number, body: string, key: string, signal?: AbortSignal) {
+	sendMessage(conversationId: number, body: string, key: string, signal?: AbortSignal, replyToMessageId?: number) {
 		return this.request<MessageResult>(`/conversations/${conversationId}/messages`, {
-			method: "POST", body: JSON.stringify({ body, idempotency_key: key }),
+			method: "POST", body: JSON.stringify({ body, idempotency_key: key, ...(replyToMessageId === undefined ? {} : { reply_to_message_id: replyToMessageId }) }),
 		}, signal);
 	}
-	sendThreadReply(conversationId: number, rootMessageId: number, body: string, key: string, signal?: AbortSignal) {
+	sendThreadReply(conversationId: number, rootMessageId: number, body: string, key: string, signal?: AbortSignal, replyToMessageId?: number) {
 		return this.request<MessageResult>(`/conversations/${conversationId}/messages`, {
-			method: "POST", body: JSON.stringify({ body, thread_root_id: rootMessageId, idempotency_key: key }),
+			method: "POST", body: JSON.stringify({ body, thread_root_id: rootMessageId, idempotency_key: key, ...(replyToMessageId === undefined ? {} : { reply_to_message_id: replyToMessageId }) }),
 		}, signal);
 	}
 	editMessage(messageId: number, body: string, key: string, signal?: AbortSignal) {

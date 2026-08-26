@@ -246,6 +246,10 @@ func TestConversationStoreKeepsAgentMembershipUnderGrantAdministration(t *testin
 		now.Unix(), channel.ID, now.Unix()); err != nil {
 		t.Fatalf("seed agent membership: %v", err)
 	}
+	members, err := store.ListMembers(context.Background(), 2, channel.ID, 0, 100)
+	if err != nil || len(members.Members) != 2 || members.Members[0].PrincipalKind != "agent" {
+		t.Fatalf("agent member projection = (%#v, %v), want agent kind", members, err)
+	}
 	for _, change := range []struct {
 		name string
 		call func(context.Context, conversation.MemberRecord) error

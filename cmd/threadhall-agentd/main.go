@@ -43,8 +43,12 @@ func run(ctx context.Context, arguments []string, getenv func(string) string) er
 	if *taskTimeout < time.Minute || *taskTimeout > 30*time.Minute {
 		return errors.New("task-timeout must be between one and thirty minutes")
 	}
+	runtime := codex.Client{Command: *codexCommand, Cwd: *codexCwd}
+	if err := agentd.SyncRuntimeCapabilities(ctx, runtime, client); err != nil {
+		return err
+	}
 	runner := agentd.Runner{
-		API: client, Runtime: codex.Client{Command: *codexCommand, Cwd: *codexCwd},
+		API: client, Runtime: runtime,
 		PollWait: time.Second, TaskTimeout: *taskTimeout,
 	}
 	if *once {

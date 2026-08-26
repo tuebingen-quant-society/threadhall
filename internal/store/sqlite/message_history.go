@@ -10,7 +10,7 @@ import (
 
 func (s *MessageStore) History(ctx context.Context, query message.History) (message.Page, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.body, m.rendered_body,
+		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.reference_message_id, m.body, m.rendered_body,
 		m.created_at, m.edited_at, m.deleted_at
 		FROM messages m
 		JOIN conversation_members member
@@ -46,6 +46,12 @@ func (s *MessageStore) History(ctx context.Context, query message.History) (mess
 		page.Messages = page.Messages[:query.Limit]
 		page.NextBeforeID = page.Messages[query.Limit-1].ID
 	}
+	if err := s.attachInlineApps(ctx, page.Messages); err != nil {
+		return message.Page{}, err
+	}
+	if err := s.attachQuestions(ctx, page.Messages); err != nil {
+		return message.Page{}, err
+	}
 	return page, nil
 }
 
@@ -61,8 +67,8 @@ func (s *MessageStore) canReadConversation(ctx context.Context, userID, conversa
 func scanMessage(row rowScanner) (message.Message, error) {
 	var item message.Message
 	var createdAt int64
-	var threadRoot, editedAt, deletedAt sql.NullInt64
-	err := row.Scan(&item.ID, &item.ConversationID, &item.AuthorID, &threadRoot, &item.Body,
+	var threadRoot, replyTo, editedAt, deletedAt sql.NullInt64
+	err := row.Scan(&item.ID, &item.ConversationID, &item.AuthorID, &threadRoot, &replyTo, &item.Body,
 		&item.RenderedBody, &createdAt, &editedAt, &deletedAt)
 	if err != nil {
 		return message.Message{}, err
@@ -70,6 +76,9 @@ func scanMessage(row rowScanner) (message.Message, error) {
 	item.CreatedAt = time.Unix(createdAt, 0).UTC()
 	if threadRoot.Valid {
 		item.ThreadRootID = &threadRoot.Int64
+	}
+	if replyTo.Valid {
+		item.ReplyToMessageID = &replyTo.Int64
 	}
 	if editedAt.Valid {
 		value := time.Unix(editedAt.Int64, 0).UTC()

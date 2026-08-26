@@ -42,26 +42,26 @@ func (s *AgentStore) Progress(ctx context.Context, tokenHash [32]byte, taskID in
 	if taskID <= 0 || summary == "" || len(summary) > 4096 {
 		return agenttask.ErrInvalidInput
 	}
-	return s.updateTaskMessage(ctx, tokenHash, taskID, summary, "", "", now)
+	return s.updateTaskMessage(ctx, tokenHash, taskID, summary, "", "", nil, nil, now)
 }
 
 func (s *AgentStore) Complete(ctx context.Context, tokenHash [32]byte, completion agenttask.Completion) error {
 	if completion.TaskID <= 0 || completion.Output == "" || len(completion.Output) > agenttask.MaxOutputBytes ||
-		len(completion.RuntimeThreadID) > 128 {
+		len(completion.RuntimeThreadID) > 128 || !agenttask.ValidInlineApps(completion.Apps) || !agenttask.ValidQuestions(completion.Questions) {
 		return agenttask.ErrInvalidInput
 	}
 	return s.updateTaskMessage(ctx, tokenHash, completion.TaskID, completion.Output,
-		completion.RuntimeThreadID, agenttask.StateCompleted, completion.CompletedAt)
+		completion.RuntimeThreadID, agenttask.StateCompleted, completion.Apps, completion.Questions, completion.CompletedAt)
 }
 
 func (s *AgentStore) Fail(ctx context.Context, tokenHash [32]byte, failure agenttask.Failure) error {
 	body := "_Codex could not complete this task._"
 	if failure.Reason == "interaction_unsupported" {
-		body = "_Codex paused because interactive questions are not supported in this version._"
+		body = "_Codex requested input that cannot be collected safely in this conversation._"
 	} else if failure.Reason != "runtime_failed" {
 		return agenttask.ErrInvalidInput
 	}
-	return s.updateTaskMessage(ctx, tokenHash, failure.TaskID, body, "", agenttask.StateFailed, failure.FailedAt)
+	return s.updateTaskMessage(ctx, tokenHash, failure.TaskID, body, "", agenttask.StateFailed, nil, nil, failure.FailedAt)
 }
 
 func (s *AgentStore) updateTaskMessage(
@@ -70,6 +70,8 @@ func (s *AgentStore) updateTaskMessage(
 	taskID int64,
 	body, runtimeThreadID string,
 	finalState agenttask.State,
+	apps []agenttask.InlineApp,
+	questions []agenttask.Question,
 	now time.Time,
 ) error {
 	rendered, err := message.RenderMarkdown(body)
@@ -109,6 +111,16 @@ func (s *AgentStore) updateTaskMessage(
 		if _, err := tx.ExecContext(ctx, `UPDATE messages SET body = ?, rendered_body = ?, edited_at = ? WHERE id = ?`,
 			body, rendered, unix(now), item.ID); err != nil {
 			return err
+		}
+		if finalState == agenttask.StateCompleted {
+			if err := replaceInlineApps(ctx, tx, item.ID, apps); err != nil {
+				return err
+			}
+			item.InlineApps = messageInlineApps(apps)
+			if err := replaceQuestions(ctx, tx, item.ID, questions); err != nil {
+				return err
+			}
+			item.Questions = questions
 		}
 		if _, err := insertMessageEvent(ctx, tx, "message.edited", item, now); err != nil {
 			return err

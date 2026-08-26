@@ -2,10 +2,21 @@
 package message
 
 import (
+	"encoding/json"
 	"time"
 
+	"github.com/tuebingen-quant-society/threadhall/internal/agenttask"
 	"github.com/tuebingen-quant-society/threadhall/internal/realtime"
 )
+
+type InlineApp struct {
+	Server      string          `json:"server"`
+	Tool        string          `json:"tool"`
+	ResourceURI string          `json:"resource_uri"`
+	HTML        string          `json:"html"`
+	Arguments   json.RawMessage `json:"arguments"`
+	Result      json.RawMessage `json:"result"`
+}
 
 const (
 	MaxBodyBytes           = 16 << 10
@@ -17,20 +28,24 @@ const (
 // Message is a durable root or one-level thread reply. Deleted messages retain
 // identity and ordering while exposing empty body fields.
 type Message struct {
-	ID             int64      `json:"id"`
-	ConversationID int64      `json:"conversation_id"`
-	AuthorID       int64      `json:"author_id"`
-	ThreadRootID   *int64     `json:"thread_root_id,omitempty"`
-	Body           string     `json:"body"`
-	RenderedBody   string     `json:"rendered_body"`
-	CreatedAt      time.Time  `json:"created_at"`
-	EditedAt       *time.Time `json:"edited_at,omitempty"`
-	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+	ID               int64                `json:"id"`
+	ConversationID   int64                `json:"conversation_id"`
+	AuthorID         int64                `json:"author_id"`
+	ThreadRootID     *int64               `json:"thread_root_id,omitempty"`
+	ReplyToMessageID *int64               `json:"reply_to_message_id,omitempty"`
+	Body             string               `json:"body"`
+	RenderedBody     string               `json:"rendered_body"`
+	CreatedAt        time.Time            `json:"created_at"`
+	EditedAt         *time.Time           `json:"edited_at,omitempty"`
+	DeletedAt        *time.Time           `json:"deleted_at,omitempty"`
+	InlineApps       []InlineApp          `json:"inline_apps,omitempty"`
+	Questions        []agenttask.Question `json:"questions,omitempty"`
 }
 
 type Send struct {
 	ConversationID, AuthorID int64
 	ThreadRootID             *int64
+	ReplyToMessageID         *int64
 	Body, IdempotencyKey     string
 }
 

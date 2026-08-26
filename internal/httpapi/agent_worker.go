@@ -20,6 +20,7 @@ type AgentWorkerAPI interface {
 	Progress(context.Context, [32]byte, int64, string, time.Time) error
 	Complete(context.Context, [32]byte, agenttask.Completion) error
 	Fail(context.Context, [32]byte, agenttask.Failure) error
+	ReplaceCapabilities(context.Context, [32]byte, []agenttask.Capability, time.Time) error
 }
 
 type agentWorkerHandler struct {
@@ -32,9 +33,26 @@ type agentWorkerHandler struct {
 func RegisterAgentWorker(mux *http.ServeMux, api AgentWorkerAPI, notifier EventNotifier) {
 	handler := &agentWorkerHandler{api: api, notifier: notifier, now: time.Now}
 	mux.Handle("GET /api/v1/agent/work", disableAuthCaching(http.HandlerFunc(handler.claim)))
+	mux.Handle("POST /api/v1/agent/capabilities", disableAuthCaching(http.HandlerFunc(handler.capabilities)))
 	mux.Handle("POST /api/v1/agent/tasks/{task_id}/progress", disableAuthCaching(http.HandlerFunc(handler.progress)))
 	mux.Handle("POST /api/v1/agent/tasks/{task_id}/complete", disableAuthCaching(http.HandlerFunc(handler.complete)))
 	mux.Handle("POST /api/v1/agent/tasks/{task_id}/fail", disableAuthCaching(http.HandlerFunc(handler.fail)))
+}
+
+func (h *agentWorkerHandler) capabilities(w http.ResponseWriter, request *http.Request) {
+	hash, ok := workerToken(w, request)
+	if !ok {
+		return
+	}
+	var body agenttask.CapabilityPage
+	if decodeWorkerJSON(w, request, &body, 1<<20) != nil {
+		writeInvalidRequest(w)
+		return
+	}
+	if writeAgentProblem(w, h.api.ReplaceCapabilities(request.Context(), hash, body.Capabilities, h.now().UTC())) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *agentWorkerHandler) claim(w http.ResponseWriter, request *http.Request) {
@@ -79,16 +97,18 @@ func (h *agentWorkerHandler) complete(w http.ResponseWriter, request *http.Reque
 		return
 	}
 	var body struct {
-		Output          string `json:"output"`
-		RuntimeThreadID string `json:"runtime_thread_id"`
+		Output          string                `json:"output"`
+		RuntimeThreadID string                `json:"runtime_thread_id"`
+		Apps            []agenttask.InlineApp `json:"apps"`
+		Questions       []agenttask.Question  `json:"questions"`
 	}
-	if decodeWorkerJSON(w, request, &body, agenttask.MaxOutputBytes+2048) != nil ||
-		strings.TrimSpace(body.Output) == "" || len(body.Output) > agenttask.MaxOutputBytes {
+	if decodeWorkerJSON(w, request, &body, agenttask.MaxOutputBytes+agenttask.MaxInlineAppsBytes+16<<10) != nil ||
+		strings.TrimSpace(body.Output) == "" || len(body.Output) > agenttask.MaxOutputBytes || !agenttask.ValidInlineApps(body.Apps) || !agenttask.ValidQuestions(body.Questions) {
 		writeInvalidRequest(w)
 		return
 	}
 	err := h.api.Complete(request.Context(), hash, agenttask.Completion{
-		TaskID: taskID, Output: body.Output, RuntimeThreadID: body.RuntimeThreadID, CompletedAt: h.now().UTC(),
+		TaskID: taskID, Output: body.Output, RuntimeThreadID: body.RuntimeThreadID, Apps: body.Apps, Questions: body.Questions, CompletedAt: h.now().UTC(),
 	})
 	if writeAgentProblem(w, err) {
 		return

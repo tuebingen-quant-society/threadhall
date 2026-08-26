@@ -10,7 +10,7 @@ import (
 
 func (s *MessageStore) Threads(ctx context.Context, query message.ListThreads) (message.ThreadList, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT root.id, root.conversation_id, root.author_id,
-		root.thread_root_id, root.body, root.rendered_body, root.created_at, root.edited_at, root.deleted_at,
+		root.thread_root_id, root.reference_message_id, root.body, root.rendered_body, root.created_at, root.edited_at, root.deleted_at,
 		count(reply.id)
 		FROM messages root
 		JOIN conversation_members member ON member.conversation_id = root.conversation_id AND member.user_id = ?
@@ -24,14 +24,17 @@ func (s *MessageStore) Threads(ctx context.Context, query message.ListThreads) (
 	result := message.ThreadList{Threads: make([]message.ThreadSummary, 0, query.Limit)}
 	for rows.Next() {
 		var summary message.ThreadSummary
-		var threadRoot, editedAt, deletedAt sql.NullInt64
+		var threadRoot, replyTo, editedAt, deletedAt sql.NullInt64
 		var createdAt int64
 		if err := rows.Scan(&summary.Root.ID, &summary.Root.ConversationID, &summary.Root.AuthorID,
-			&threadRoot, &summary.Root.Body, &summary.Root.RenderedBody, &createdAt, &editedAt, &deletedAt,
+			&threadRoot, &replyTo, &summary.Root.Body, &summary.Root.RenderedBody, &createdAt, &editedAt, &deletedAt,
 			&summary.ReplyCount); err != nil {
 			return message.ThreadList{}, err
 		}
 		summary.Root.CreatedAt = time.Unix(createdAt, 0).UTC()
+		if replyTo.Valid {
+			summary.Root.ReplyToMessageID = &replyTo.Int64
+		}
 		if editedAt.Valid {
 			value := time.Unix(editedAt.Int64, 0).UTC()
 			summary.Root.EditedAt = &value
@@ -42,5 +45,21 @@ func (s *MessageStore) Threads(ctx context.Context, query message.ListThreads) (
 		}
 		result.Threads = append(result.Threads, summary)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return message.ThreadList{}, err
+	}
+	roots := make([]message.Message, len(result.Threads))
+	for index := range result.Threads {
+		roots[index] = result.Threads[index].Root
+	}
+	if err := s.attachInlineApps(ctx, roots); err != nil {
+		return message.ThreadList{}, err
+	}
+	if err := s.attachQuestions(ctx, roots); err != nil {
+		return message.ThreadList{}, err
+	}
+	for index := range result.Threads {
+		result.Threads[index].Root = roots[index]
+	}
+	return result, nil
 }

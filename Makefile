@@ -14,5 +14,6 @@ web:
 build: web
 	go build -tags $(GO_TAGS) -o bin/threadhall ./cmd/threadhall
 	go build -tags $(GO_TAGS) -o bin/threadhall-agentd ./cmd/threadhall-agentd
+	go build -o bin/threadhall-ui-demo-mcp ./cmd/threadhall-ui-demo-mcp
 
 check: test build

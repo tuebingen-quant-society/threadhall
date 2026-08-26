@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 
-import type { Message, MessageResult, RealtimeEvent } from "../../api/types";
-import { DeleteIcon, EditIcon, MoreIcon, ThreadIcon } from "./message-icons";
+import type { InlineApp, Message, MessageResult, Question, RealtimeEvent } from "../../api/types";
+import { MessageRow } from "./message-row";
+import { linkedQuestionAnswer } from "./question-card";
 
 export const MAX_CLIENT_MESSAGES = 200;
 const MAX_ENTITY_PATCHES = 200;
@@ -9,7 +10,7 @@ const MAX_PINNED_MESSAGES = 20;
 
 type TimelineWindow = "latest" | "older";
 type EntityPatch =
-	| { kind: "edit"; body: string; renderedBody: string; editedAt: string }
+	| { kind: "edit"; body: string; renderedBody: string; editedAt: string; inlineApps?: InlineApp[]; questions?: Question[] }
 	| { kind: "delete"; deletedAt: string };
 
 export interface TimelineState {
@@ -37,6 +38,33 @@ function objectPayload(payload: unknown): Record<string, unknown> | null {
 
 function stringField(payload: Record<string, unknown>, field: string) {
 	return typeof payload[field] === "string" ? payload[field] as string : undefined;
+}
+
+function inlineAppsField(payload: Record<string, unknown>) {
+	const value = payload.inline_apps;
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.length > 4 || value.some((app) => {
+		if (typeof app !== "object" || app === null || Array.isArray(app)) return true;
+		const candidate = app as Record<string, unknown>;
+		return ["server", "tool", "resource_uri", "html"].some((field) => typeof candidate[field] !== "string");
+	})) return undefined;
+	return value as InlineApp[];
+}
+
+function questionsField(payload: Record<string, unknown>) {
+	const value = payload.questions;
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.length > 3 || value.some((question) => {
+		if (typeof question !== "object" || question === null || Array.isArray(question)) return true;
+		const candidate = question as Record<string, unknown>;
+		return typeof candidate.id !== "string" || typeof candidate.header !== "string" || typeof candidate.question !== "string" ||
+			typeof candidate.is_other !== "boolean" || !Array.isArray(candidate.options) || candidate.options.some((option) => {
+				if (typeof option !== "object" || option === null || Array.isArray(option)) return true;
+				const item = option as Record<string, unknown>;
+				return typeof item.label !== "string" || typeof item.description !== "string";
+			});
+	})) return undefined;
+	return value as Question[];
 }
 
 function pin(pinnedIds: Set<number>, id: number) {
@@ -74,7 +102,9 @@ function recordPatch(patches: Map<number, EntityPatch>, id: number, patch: Entit
 
 function applyPatch(item: Message, patch: EntityPatch) {
 	return patch.kind === "edit"
-		? { ...item, body: patch.body, rendered_body: patch.renderedBody, edited_at: patch.editedAt }
+		? { ...item, body: patch.body, rendered_body: patch.renderedBody, edited_at: patch.editedAt,
+			...(patch.inlineApps === undefined ? {} : { inline_apps: patch.inlineApps }),
+			...(patch.questions === undefined ? {} : { questions: patch.questions }) }
 		: { ...item, body: "", rendered_body: "", deleted_at: patch.deletedAt };
 }
 
@@ -99,11 +129,12 @@ export function applyRealtimeEvent(state: TimelineState, event: RealtimeEvent): 
 		const body = stringField(payload, "body");
 		const rendered = stringField(payload, "rendered_body");
 		const created = stringField(payload, "created_at");
+		const replyTo = typeof payload.reply_to_message_id === "number" ? payload.reply_to_message_id : undefined;
 		if (typeof author === "number" && body !== undefined && rendered !== undefined && created !== undefined) {
 			pinnedIds = pin(pinnedIds, event.entity_id);
 			messages = upsert(messages, {
 				id: event.entity_id, conversation_id: event.conversation_id, author_id: author,
-				body, rendered_body: rendered, created_at: created,
+				body, rendered_body: rendered, created_at: created, reply_to_message_id: replyTo,
 			}, state.window, pinnedIds);
 			if (entityPatches.has(event.entity_id)) {
 				entityPatches = new Map(entityPatches); entityPatches.delete(event.entity_id);
@@ -113,14 +144,18 @@ export function applyRealtimeEvent(state: TimelineState, event: RealtimeEvent): 
 		const body = stringField(payload, "body");
 		const rendered = stringField(payload, "rendered_body");
 		const edited = stringField(payload, "edited_at");
+		const inlineApps = inlineAppsField(payload);
+		const questions = questionsField(payload);
 		if (body !== undefined && rendered !== undefined && edited !== undefined) {
 			pinnedIds = pin(pinnedIds, event.entity_id);
 			if (messages.some((message) => message.id === event.entity_id)) {
 				messages = messages.map((message) => message.id === event.entity_id
-					? { ...message, body, rendered_body: rendered, edited_at: edited }
+					? { ...message, body, rendered_body: rendered, edited_at: edited,
+						...(inlineApps === undefined ? {} : { inline_apps: inlineApps }),
+						...(questions === undefined ? {} : { questions }) }
 					: message);
 			} else {
-				const recorded = recordPatch(entityPatches, event.entity_id, { kind: "edit", body, renderedBody: rendered, editedAt: edited });
+				const recorded = recordPatch(entityPatches, event.entity_id, { kind: "edit", body, renderedBody: rendered, editedAt: edited, inlineApps, questions });
 				entityPatches = recorded.patches; if (recorded.overflowed) historyGeneration += 1;
 			}
 		} else return state;
@@ -192,73 +227,13 @@ interface TimelineProps {
 	onEdit: (message: Message, body: string) => void | Promise<void>;
 	onDelete: (message: Message) => void | Promise<void>;
 	onOpenThread: (message: Message) => void;
-}
-
-function MessageRow({ message, own, author, onEdit, onDelete, onOpenThread }: {
-	message: Message; own: boolean; author: string;
-	onEdit: TimelineProps["onEdit"]; onDelete: TimelineProps["onDelete"]; onOpenThread: TimelineProps["onOpenThread"];
-}) {
-	const [editing, setEditing] = useState(false);
-	const [draft, setDraft] = useState(message.body);
-	const row = useRef<HTMLElement>(null);
-	const actionTrigger = useRef<HTMLElement>(null);
-	const editField = useRef<HTMLTextAreaElement>(null);
-	const restoreActions = useRef(false);
-	const deleted = Boolean(message.deleted_at);
-	const time = new Date(message.created_at);
-	useEffect(() => {
-		if (editing) editField.current?.focus();
-		else if (restoreActions.current) {
-			restoreActions.current = false;
-			actionTrigger.current?.focus();
-		}
-	}, [editing]);
-
-	function stopEditing() {
-		restoreActions.current = true;
-		setEditing(false);
-	}
-
-	function save(event: Event) {
-		event.preventDefault();
-		if (draft.trim() === "") return;
-		void onEdit(message, draft);
-		stopEditing();
-	}
-
-	async function remove() {
-		await onDelete(message);
-		row.current?.focus();
-	}
-
-	return (
-		<article ref={row} class="message-row" data-message-id={message.id} tabIndex={-1}>
-			<header>
-				<strong>{author}</strong>
-				<time dateTime={message.created_at} title={time.toLocaleString()}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
-				{message.edited_at && !deleted && <span>edited</span>}
-			</header>
-			{deleted ? <p class="tombstone">Message deleted</p> : editing ? (
-				<form class="edit-form" onSubmit={save}>
-					<label class="sr-only" for={`edit-${message.id}`}>Edit message text</label>
-					<textarea ref={editField} id={`edit-${message.id}`} value={draft} onInput={(event) => setDraft(event.currentTarget.value)} maxLength={16_384} />
-					<div><button class="text-button" type="button" onClick={stopEditing}>Cancel</button><button class="small-button" type="submit">Save edit</button></div>
-				</form>
-			) : <div class="message-body" dangerouslySetInnerHTML={{ __html: message.rendered_body }} />}
-			{!deleted && !editing && <details class="message-actions">
-				<summary ref={actionTrigger} aria-label="Message actions" title="Message actions"><MoreIcon /></summary>
-				<div>
-					<button type="button" aria-label="Open thread" title="Thread" onClick={() => onOpenThread(message)}><ThreadIcon /></button>
-					{own && <button type="button" aria-label="Edit message" title="Edit" onClick={() => setEditing(true)}><EditIcon /></button>}
-					{own && <button type="button" aria-label="Delete message" title="Delete" onClick={() => void remove()}><DeleteIcon /></button>}
-				</div>
-			</details>}
-		</article>
-	);
+	onReply?: (message: Message) => void;
+	onQuestionAnswer?: (message: Message, question: Question, answer: string) => void | Promise<void>;
 }
 
 export function Timeline(props: TimelineProps) {
 	const end = useRef<HTMLDivElement>(null);
+	const byID = new Map(props.messages.map((message) => [message.id, message]));
 	useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [props.messages.length, props.pending?.length]);
 
 	return (
@@ -269,8 +244,12 @@ export function Timeline(props: TimelineProps) {
 			{!props.loading && !props.error && props.messages.length === 0 && !props.pending?.length && <div class="timeline-state"><p class="muted">No messages yet</p><h2>Begin the thread.</h2><p>Write the first note for this conversation.</p></div>}
 			{props.messages.map((message) => <MessageRow
 				key={message.id} message={message} own={message.author_id === props.currentUserId}
+				replyTarget={message.reply_to_message_id ? byID.get(message.reply_to_message_id) : undefined}
 				author={props.memberNames.get(message.author_id) ?? `User ${message.author_id}`}
-				onEdit={props.onEdit} onDelete={props.onDelete} onOpenThread={props.onOpenThread}
+				memberNames={props.memberNames}
+				onEdit={props.onEdit} onDelete={props.onDelete} onOpenThread={props.onOpenThread} onReply={props.onReply}
+				onQuestionAnswer={props.onQuestionAnswer}
+				questionAnswers={new Map(message.questions?.map((question) => [question.id, linkedQuestionAnswer(props.messages, props.currentUserId, message.id, question)]))}
 			/>)}
 			{props.pending?.map((message) => <article class="message-row pending-message" key={message.idempotencyKey}>
 				<header><strong>You</strong><span>Sending…</span></header><p>{message.body}</p>

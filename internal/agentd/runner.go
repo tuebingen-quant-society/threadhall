@@ -12,7 +12,7 @@ import (
 type WorkerAPI interface {
 	Next(context.Context) (agenttask.Work, bool, error)
 	Progress(context.Context, int64, string) error
-	Complete(context.Context, int64, string, string) error
+	Complete(context.Context, int64, string, string, []agenttask.InlineApp, []agenttask.Question) error
 	Fail(context.Context, int64, error) error
 }
 
@@ -48,7 +48,7 @@ func (r Runner) RunOnce(ctx context.Context) (bool, error) {
 		}
 		return true, nil
 	}
-	if err := r.API.Complete(ctx, work.Task.ID, result.Output, result.ThreadID); err != nil {
+	if err := r.API.Complete(ctx, work.Task.ID, result.Output, result.ThreadID, result.Apps, result.Questions); err != nil {
 		return true, fmt.Errorf("publish Codex result: %w", err)
 	}
 	return true, nil

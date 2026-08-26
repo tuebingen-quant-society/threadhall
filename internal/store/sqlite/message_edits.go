@@ -102,7 +102,7 @@ func (s *MessageStore) Delete(ctx context.Context, record message.DeleteRecord) 
 
 func editableMessage(ctx context.Context, tx *sql.Tx, messageID, authorID int64) (message.Message, error) {
 	item, err := scanMessage(tx.QueryRowContext(ctx, `SELECT
-		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.body, m.rendered_body,
+		m.id, m.conversation_id, m.author_id, m.thread_root_id, m.reference_message_id, m.body, m.rendered_body,
 		m.created_at, m.edited_at, m.deleted_at
 		FROM messages m
 		JOIN conversation_members member

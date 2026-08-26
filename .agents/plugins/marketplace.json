@@ -1,0 +1,20 @@
+{
+  "name": "threadhall-team",
+  "interface": {
+    "displayName": "Threadhall Team"
+  },
+  "plugins": [
+    {
+      "name": "threadhall-ui-demo",
+      "source": {
+        "source": "local",
+        "path": "./plugins/threadhall-ui-demo"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

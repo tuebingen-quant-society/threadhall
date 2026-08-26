@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Threadhall project brief</title>
+  <style>
+    :root { color-scheme: light; font: 14px/1.45 system-ui, sans-serif; color: #181818; background: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px 20px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #e4e4e4; }
+    h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+    #status { color: #5d5d5d; font-size: 12px; }
+    nav { display: flex; gap: 4px; margin: 14px 0; }
+    button { border: 0; border-radius: 5px; padding: 7px 10px; background: transparent; color: #555; font: inherit; cursor: pointer; }
+    button[aria-selected="true"] { background: #ededed; color: #111; }
+    dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 0 0 14px; }
+    dt { color: #666; font-size: 12px; }
+    dd { margin: 3px 0 0; font-size: 15px; font-weight: 600; }
+    p { margin: 0; color: #444; }
+    [hidden] { display: none; }
+    ol { margin: 0; padding-left: 20px; color: #444; }
+  </style>
+</head>
+<body>
+  <header><h1>Threadhall project brief</h1><span id="status">Connecting…</span></header>
+  <nav aria-label="View">
+    <button type="button" data-view="overview" aria-selected="true">Overview</button>
+    <button type="button" data-view="flow" aria-selected="false">Agent flow</button>
+  </nav>
+  <main id="overview">
+    <dl><div><dt>Runtime</dt><dd id="runtime">Go</dd></div><div><dt>Storage</dt><dd id="storage">SQLite</dd></div><div><dt>Focus</dt><dd id="focus">Collaboration</dd></div></dl>
+    <p id="summary">A lean, self-hosted team chat where humans and scoped agents work in the same channels.</p>
+  </main>
+  <main id="flow" hidden>
+    <ol><li>A channel mention creates bounded work.</li><li>The worker starts an isolated Codex task.</li><li>Progress, Markdown, files, and MCP Apps return inline.</li></ol>
+  </main>
+  <script>
+    const parentWindow = window.parent;
+    const rpc = (method, params, id) => parentWindow.postMessage({ jsonrpc: "2.0", method, params, ...(id === undefined ? {} : { id }) }, "*");
+    let initialized = false;
+    window.addEventListener("message", (event) => {
+      if (event.source !== parentWindow || !event.data || event.data.jsonrpc !== "2.0") return;
+      if (event.data.id === 1 && event.data.result && !initialized) {
+        initialized = true;
+        document.getElementById("status").textContent = "Live MCP App";
+        rpc("ui/notifications/initialized");
+      }
+      const data = event.data.method === "ui/notifications/tool-result" ? event.data.params?.structuredContent : null;
+      if (data) {
+        document.getElementById("runtime").textContent = data.runtime || "Go";
+        document.getElementById("storage").textContent = data.storage || "SQLite";
+        document.getElementById("focus").textContent = data.focus || "Collaboration";
+        document.getElementById("summary").textContent = data.summary || "Threadhall project brief";
+      }
+    });
+    document.querySelectorAll("button[data-view]").forEach((button) => button.addEventListener("click", () => {
+      document.querySelectorAll("button[data-view]").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+      document.querySelectorAll("main").forEach((view) => { view.hidden = view.id !== button.dataset.view; });
+    }));
+    rpc("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "threadhall-ui-demo", version: "0.1.0" }, appCapabilities: {} }, 1);
+  </script>
+</body>
+</html>

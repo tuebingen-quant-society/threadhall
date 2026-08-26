@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/tuebingen-quant-society/threadhall/internal/agenttask"
 )
 
 const maxRPCFrameBytes = 1 << 20
@@ -15,8 +17,10 @@ const maxRPCFrameBytes = 1 << 20
 var ErrInteractionRequired = errors.New("Codex requested an interactive question")
 
 type Result struct {
-	ThreadID string
-	Output   string
+	ThreadID  string
+	Output    string
+	Apps      []agenttask.InlineApp
+	Questions []agenttask.Question
 }
 
 type rpcConnection struct {
@@ -66,14 +70,21 @@ func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string) 
 	}); err != nil {
 		return Result{}, fmt.Errorf("start Codex turn: %w", err)
 	}
-	output, err := rpc.readTurn(ctx)
+	output, pendingApps, questions, err := rpc.readTurn(ctx)
 	if err != nil {
 		return Result{}, err
+	}
+	if strings.TrimSpace(output) == "" && len(questions) > 0 {
+		output = questionOutput(questions)
 	}
 	if strings.TrimSpace(output) == "" {
 		return Result{}, errors.New("Codex completed without a public response")
 	}
-	return Result{ThreadID: thread.Thread.ID, Output: output}, nil
+	apps, err := rpc.readApps(ctx, thread.Thread.ID, pendingApps)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{ThreadID: thread.Thread.ID, Output: output, Apps: apps, Questions: questions}, nil
 }
 
 func (r *rpcConnection) request(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -105,31 +116,47 @@ func (r *rpcConnection) request(ctx context.Context, method string, params any) 
 	}
 }
 
-func (r *rpcConnection) readTurn(ctx context.Context) (string, error) {
+type pendingApp struct {
+	Server, Tool, ResourceURI string
+	Arguments, Result         json.RawMessage
+}
+
+func (r *rpcConnection) readTurn(ctx context.Context) (string, []pendingApp, []agenttask.Question, error) {
 	var output strings.Builder
+	apps := make([]pendingApp, 0, maxInlineApps)
 	for {
 		frame, err := r.next(ctx)
 		if err != nil {
-			return "", fmt.Errorf("read Codex turn: %w", err)
+			return "", nil, nil, fmt.Errorf("read Codex turn: %w", err)
 		}
 		if frame.ID != 0 && frame.Method != "" {
 			if frame.Method == "item/tool/requestUserInput" {
+				questions, valid := captureQuestions(frame.Params)
 				_ = r.rejectServerRequest(frame.ID)
-				return "", ErrInteractionRequired
+				if !valid {
+					return "", nil, nil, ErrInteractionRequired
+				}
+				return output.String(), apps, questions, nil
 			}
 			if err := r.rejectServerRequest(frame.ID); err != nil {
-				return "", err
+				return "", nil, nil, err
 			}
 			continue
 		}
 		switch frame.Method {
+		case "item/completed":
+			if len(apps) < maxInlineApps {
+				if app, ok := completedApp(frame.Params); ok {
+					apps = append(apps, app)
+				}
+			}
 		case "item/agentMessage/delta":
 			var params struct {
 				Delta string `json:"delta"`
 			}
 			if json.Unmarshal(frame.Params, &params) == nil {
 				if output.Len()+len(params.Delta) > agentOutputLimit {
-					return "", errors.New("Codex response exceeds the public output limit")
+					return "", nil, nil, errors.New("Codex response exceeds the public output limit")
 				}
 				output.WriteString(params.Delta)
 			}
@@ -140,17 +167,84 @@ func (r *rpcConnection) readTurn(ctx context.Context) (string, error) {
 				} `json:"turn"`
 			}
 			if err := json.Unmarshal(frame.Params, &params); err != nil {
-				return "", errors.New("invalid turn/completed notification")
+				return "", nil, nil, errors.New("invalid turn/completed notification")
 			}
 			if params.Turn.Status != "completed" {
-				return "", fmt.Errorf("Codex turn ended with status %q", params.Turn.Status)
+				return "", nil, nil, fmt.Errorf("Codex turn ended with status %q", params.Turn.Status)
 			}
-			return output.String(), nil
+			return output.String(), apps, nil, nil
 		}
 	}
 }
 
-const agentOutputLimit = 64 << 10
+func completedApp(raw json.RawMessage) (pendingApp, bool) {
+	var params struct {
+		Item struct {
+			Type, Server, Tool, Status string
+			MCPAppResourceURI          string `json:"mcpAppResourceUri"`
+			Arguments, Result          json.RawMessage
+			AppContext                 *struct {
+				ResourceURI string `json:"resourceUri"`
+			} `json:"appContext"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(raw, &params) != nil || params.Item.Type != "mcpToolCall" || params.Item.Status != "completed" {
+		return pendingApp{}, false
+	}
+	uri := params.Item.MCPAppResourceURI
+	if params.Item.AppContext != nil && params.Item.AppContext.ResourceURI != "" {
+		uri = params.Item.AppContext.ResourceURI
+	}
+	if params.Item.Server == "" || params.Item.Tool == "" || !strings.HasPrefix(uri, "ui://") ||
+		len(params.Item.Arguments) > maxInlineAppJSON || len(params.Item.Result) > maxInlineAppJSON {
+		return pendingApp{}, false
+	}
+	return pendingApp{Server: params.Item.Server, Tool: params.Item.Tool, ResourceURI: uri,
+		Arguments: params.Item.Arguments, Result: params.Item.Result}, true
+}
+
+func (r *rpcConnection) readApps(ctx context.Context, threadID string, pending []pendingApp) ([]agenttask.InlineApp, error) {
+	apps := make([]agenttask.InlineApp, 0, len(pending))
+	total := 0
+	for _, item := range pending {
+		raw, err := r.request(ctx, "mcpServer/resource/read", map[string]any{
+			"server": item.Server, "uri": item.ResourceURI, "threadId": threadID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("read MCP App resource: %w", err)
+		}
+		var response struct {
+			Contents []struct {
+				URI, MIMEType, Text string
+			} `json:"contents"`
+		}
+		if json.Unmarshal(raw, &response) != nil {
+			return nil, errors.New("MCP App resource returned invalid content")
+		}
+		for _, content := range response.Contents {
+			if content.URI != item.ResourceURI || !strings.EqualFold(strings.TrimSpace(content.MIMEType), mcpAppMIME) || content.Text == "" {
+				continue
+			}
+			if len(content.Text) > maxInlineAppHTML || total+len(content.Text) > maxInlineAppsHTML {
+				return nil, errors.New("MCP App resource exceeds the inline UI limit")
+			}
+			total += len(content.Text)
+			apps = append(apps, agenttask.InlineApp{Server: item.Server, Tool: item.Tool,
+				ResourceURI: item.ResourceURI, HTML: content.Text, Arguments: item.Arguments, Result: item.Result})
+			break
+		}
+	}
+	return apps, nil
+}
+
+const (
+	agentOutputLimit  = 64 << 10
+	maxInlineApps     = 4
+	maxInlineAppJSON  = 64 << 10
+	maxInlineAppHTML  = 256 << 10
+	maxInlineAppsHTML = 512 << 10
+	mcpAppMIME        = "text/html;profile=mcp-app"
+)
 
 type rpcFrame struct {
 	ID     int64           `json:"id"`

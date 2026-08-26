@@ -13,7 +13,9 @@ import (
 func TestRunnerPublishesProgressThenCodexResult(t *testing.T) {
 	t.Parallel()
 	api := &fakeWorkerAPI{work: agenttask.Work{Task: agenttask.Task{ID: 7}, Prompt: "bounded"}, found: true}
-	runtime := &fakeRuntime{result: codex.Result{ThreadID: "runtime-id", Output: "## Answer"}}
+	apps := []agenttask.InlineApp{{Server: "forms", Tool: "ask", ResourceURI: "ui://forms/ask", HTML: "<form></form>"}}
+	questions := []agenttask.Question{{ID: "scope", Header: "Scope", Question: "Which scope?"}}
+	runtime := &fakeRuntime{result: codex.Result{ThreadID: "runtime-id", Output: "## Answer", Apps: apps, Questions: questions}}
 	runner := Runner{API: api, Runtime: runtime}
 	worked, err := runner.RunOnce(context.Background())
 	if err != nil || !worked {
@@ -24,6 +26,12 @@ func TestRunnerPublishesProgressThenCodexResult(t *testing.T) {
 	}
 	if api.output != "## Answer" || api.runtimeID != "runtime-id" || api.taskID != 7 {
 		t.Fatalf("completion = task %d output %q runtime %q", api.taskID, api.output, api.runtimeID)
+	}
+	if len(api.apps) != 1 || api.apps[0].ResourceURI != "ui://forms/ask" {
+		t.Fatalf("completion apps = %#v", api.apps)
+	}
+	if len(api.questions) != 1 || api.questions[0].ID != "scope" {
+		t.Fatalf("completion questions = %#v", api.questions)
 	}
 }
 
@@ -61,6 +69,8 @@ type fakeWorkerAPI struct {
 	output, runtimeID string
 	taskID            int64
 	failure           error
+	apps              []agenttask.InlineApp
+	questions         []agenttask.Question
 }
 
 func (f *fakeWorkerAPI) Next(context.Context) (agenttask.Work, bool, error) {
@@ -70,8 +80,8 @@ func (f *fakeWorkerAPI) Progress(_ context.Context, _ int64, summary string) err
 	f.progress = summary
 	return nil
 }
-func (f *fakeWorkerAPI) Complete(_ context.Context, taskID int64, output, runtimeID string) error {
-	f.taskID, f.output, f.runtimeID = taskID, output, runtimeID
+func (f *fakeWorkerAPI) Complete(_ context.Context, taskID int64, output, runtimeID string, apps []agenttask.InlineApp, questions []agenttask.Question) error {
+	f.taskID, f.output, f.runtimeID, f.apps, f.questions = taskID, output, runtimeID, apps, questions
 	return nil
 }
 func (f *fakeWorkerAPI) Fail(_ context.Context, taskID int64, failure error) error {

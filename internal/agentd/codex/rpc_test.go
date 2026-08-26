@@ -27,6 +27,116 @@ func TestRunProtocolStartsFreshReadOnlyThreadAndReturnsMarkdown(t *testing.T) {
 	}
 }
 
+func TestDiscoverProtocolReturnsOnlyEnabledInstalledPluginsAndSkills(t *testing.T) {
+	t.Parallel()
+	client, server := net.Pipe()
+	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
+	serverErr := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(server)
+		encoder := json.NewEncoder(server)
+		request, err := readRPCFixture(scanner)
+		if err != nil || request.Method != "initialize" {
+			serverErr <- fixtureError("initialize", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"userAgent": "codex-test"}})
+		_, _ = readRPCFixture(scanner) // initialized
+		request, err = readRPCFixture(scanner)
+		if err != nil || request.Method != "plugin/list" {
+			serverErr <- fixtureError("plugin/list", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"marketplaces": []any{map[string]any{
+			"name": "local", "plugins": []any{
+				map[string]any{"id": "drive@example", "name": "drive", "installed": true, "enabled": true, "interface": map[string]any{"displayName": "Drive", "shortDescription": "Files"}},
+				map[string]any{"id": "off@example", "name": "off", "installed": false, "enabled": false},
+			},
+		}}}})
+		request, err = readRPCFixture(scanner)
+		if err != nil || request.Method != "skills/list" {
+			serverErr <- fixtureError("skills/list", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"data": []any{map[string]any{
+			"cwd": "/tmp/empty", "errors": []any{}, "skills": []any{
+				map[string]any{"name": "better-layout", "description": "Layout", "enabled": true, "path": "/tmp/skill", "scope": "user"},
+				map[string]any{"name": "off", "description": "Off", "enabled": false, "path": "/tmp/off", "scope": "user"},
+			},
+		}}}})
+		serverErr <- nil
+	}()
+
+	items, err := discoverProtocol(context.Background(), client, "/tmp/empty")
+	if err != nil {
+		t.Fatalf("discoverProtocol: %v", err)
+	}
+	if len(items) != 2 || items[0].ID != "drive@example" || items[1].ID != "better-layout" {
+		t.Fatalf("capabilities = %#v", items)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("fixture server: %v", err)
+	}
+}
+
+func TestRunProtocolReadsCompletedMCPAppResources(t *testing.T) {
+	t.Parallel()
+	client, server := net.Pipe()
+	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
+	serverErr := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(server)
+		encoder := json.NewEncoder(server)
+		request, err := readRPCFixture(scanner)
+		if err != nil || request.Method != "initialize" {
+			serverErr <- fixtureError("initialize", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"userAgent": "codex-test"}})
+		_, _ = readRPCFixture(scanner)
+		request, err = readRPCFixture(scanner)
+		if err != nil || request.Method != "thread/start" {
+			serverErr <- fixtureError("thread/start", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"thread": map[string]any{"id": "app-thread"}}})
+		request, err = readRPCFixture(scanner)
+		if err != nil || request.Method != "turn/start" {
+			serverErr <- fixtureError("turn/start", request, err)
+			return
+		}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"turn": map[string]any{"id": "turn-app", "status": "inProgress"}}})
+		_ = encoder.Encode(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{
+			"id": "tool-1", "type": "mcpToolCall", "server": "forms", "tool": "ask", "status": "completed",
+			"arguments": map[string]any{"question": "Choose"}, "result": map[string]any{"content": []any{}},
+			"appContext": map[string]any{"connectorId": "forms", "resourceUri": "ui://forms/ask"},
+		}}})
+		_ = encoder.Encode(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{"delta": "Please choose."}})
+		_ = encoder.Encode(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+		request, err = readRPCFixture(scanner)
+		if err != nil || request.Method != "mcpServer/resource/read" || request.Params["server"] != "forms" || request.Params["uri"] != "ui://forms/ask" {
+			serverErr <- fixtureError("mcpServer/resource/read", request, err)
+			return
+		}
+		contents := []any{map[string]any{
+			"uri": "ui://forms/ask", "mimeType": "text/html;profile=mcp-app", "text": "<form><button>Choose</button></form>",
+		}}
+		_ = encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{"contents": contents}})
+		serverErr <- nil
+	}()
+
+	result, err := runProtocol(context.Background(), client, "ask with a form", "/tmp/empty")
+	if err != nil {
+		t.Fatalf("runProtocol: %v", err)
+	}
+	if len(result.Apps) != 1 || result.Apps[0].ResourceURI != "ui://forms/ask" || result.Apps[0].HTML != "<form><button>Choose</button></form>" {
+		t.Fatalf("apps = %#v", result.Apps)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("fixture server: %v", err)
+	}
+}
+
 func serveCodexFixture(connection net.Conn) error {
 	scanner := bufio.NewScanner(connection)
 	encoder := json.NewEncoder(connection)
