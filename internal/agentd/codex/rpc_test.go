@@ -8,14 +8,17 @@ import (
 	"testing"
 )
 
-func TestRunProtocolStartsFreshReadOnlyThreadAndReturnsMarkdown(t *testing.T) {
+func TestRunProtocolStartsFreshIsolatedThreadAndReturnsMarkdown(t *testing.T) {
 	t.Parallel()
 	client, server := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- serveCodexFixture(server) }()
 
-	result, err := runProtocol(context.Background(), client, "bounded prompt", "/tmp/empty")
+	result, err := runProtocol(context.Background(), client, "bounded prompt", "/tmp/empty", threadConfig{
+		Model: "gpt-5.6-terra", ReasoningEffort: "medium",
+		SubagentModel: "gpt-5.6-luna", SubagentReasoningEffort: "medium", MaxConcurrentSubagents: 3,
+	})
 	if err != nil {
 		t.Fatalf("runProtocol: %v", err)
 	}
@@ -125,7 +128,7 @@ func TestRunProtocolReadsCompletedMCPAppResources(t *testing.T) {
 		serverErr <- nil
 	}()
 
-	result, err := runProtocol(context.Background(), client, "ask with a form", "/tmp/empty")
+	result, err := runProtocol(context.Background(), client, "ask with a form", "/tmp/empty", threadConfig{})
 	if err != nil {
 		t.Fatalf("runProtocol: %v", err)
 	}
@@ -153,8 +156,18 @@ func serveCodexFixture(connection net.Conn) error {
 	}
 	request, err = readRPCFixture(scanner)
 	if err != nil || request.Method != "thread/start" || request.Params["cwd"] != "/tmp/empty" ||
-		request.Params["approvalPolicy"] != "never" || request.Params["sandbox"] != "read-only" || request.Params["ephemeral"] != true {
+		request.Params["approvalPolicy"] != "never" || request.Params["sandbox"] != "workspace-write" || request.Params["ephemeral"] != true ||
+		request.Params["model"] != "gpt-5.6-terra" {
 		return fixtureError("secure thread/start", request, err)
+	}
+	config, _ := request.Params["config"].(map[string]any)
+	if config["model_reasoning_effort"] != "medium" {
+		return fixtureError("thread reasoning config", request, nil)
+	}
+	agents, _ := config["agents"].(map[string]any)
+	if agents["enabled"] != true || agents["default_subagent_model"] != "gpt-5.6-luna" ||
+		agents["default_subagent_reasoning_effort"] != "medium" || agents["max_concurrent_threads_per_session"] != float64(3) {
+		return fixtureError("subagent config", request, nil)
 	}
 	if err := encoder.Encode(map[string]any{"id": request.ID, "result": map[string]any{
 		"thread": map[string]any{"id": "019d-thread"}, "model": "gpt-5", "modelProvider": "openai",

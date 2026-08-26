@@ -34,7 +34,7 @@ type readWriter interface {
 	io.Writer
 }
 
-func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string) (Result, error) {
+func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string, config threadConfig) (Result, error) {
 	if strings.TrimSpace(prompt) == "" || strings.TrimSpace(cwd) == "" {
 		return Result{}, errors.New("Codex prompt and cwd are required")
 	}
@@ -49,10 +49,7 @@ func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string) 
 	if err := rpc.encoder.Encode(map[string]any{"method": "initialized"}); err != nil {
 		return Result{}, fmt.Errorf("notify Codex initialization: %w", err)
 	}
-	threadRaw, err := rpc.request(ctx, "thread/start", map[string]any{
-		"cwd": cwd, "approvalPolicy": "never", "sandbox": "read-only", "ephemeral": true,
-		"developerInstructions": "Answer as a Threadhall teammate. Do not inspect the filesystem, external services, or other Codex threads. Use only the supplied bounded chat context.",
-	})
+	threadRaw, err := rpc.request(ctx, "thread/start", threadStartParams(cwd, config))
 	if err != nil {
 		return Result{}, fmt.Errorf("start Codex thread: %w", err)
 	}
@@ -74,6 +71,10 @@ func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string) 
 	if err != nil {
 		return Result{}, err
 	}
+	output, visualizations, err := extractVisualizations(output, cwd)
+	if err != nil {
+		return Result{}, err
+	}
 	if strings.TrimSpace(output) == "" && len(questions) > 0 {
 		output = questionOutput(questions)
 	}
@@ -83,6 +84,10 @@ func runProtocol(ctx context.Context, transport readWriter, prompt, cwd string) 
 	apps, err := rpc.readApps(ctx, thread.Thread.ID, pendingApps)
 	if err != nil {
 		return Result{}, err
+	}
+	apps = append(apps, visualizations...)
+	if !agenttask.ValidInlineApps(apps) {
+		return Result{}, errors.New("Codex returned invalid inline UI")
 	}
 	return Result{ThreadID: thread.Thread.ID, Output: output, Apps: apps, Questions: questions}, nil
 }

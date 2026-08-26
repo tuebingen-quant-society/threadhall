@@ -19,7 +19,10 @@ func TestLiveAuthenticatedCodexAppServer(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	result, err := (Client{Command: command, Cwd: t.TempDir()}).Run(ctx,
+	result, err := (Client{
+		Command: command, Cwd: t.TempDir(), Model: "gpt-5.6-terra", ReasoningEffort: "medium",
+		SubagentModel: "gpt-5.6-luna", SubagentReasoningEffort: "medium", MaxConcurrentSubagents: 3,
+	}).Run(ctx,
 		"Reply with the exact marker THREADHALL_CODEX_LIVE_OK and one short Markdown bullet. Do not use tools.")
 	if err != nil {
 		t.Fatalf("live Codex run: %v", err)

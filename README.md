@@ -51,11 +51,23 @@ start the outbound worker with an empty, absolute working directory:
 THREADHALL_WORKER_TOKEN='the-one-time-token' \
 ./bin/threadhall-agentd \
   -threadhall-url http://127.0.0.1:8080 \
-  -codex-cwd /absolute/path/to/empty-directory
+  -codex-cwd /absolute/path/to/empty-directory \
+  -codex-model gpt-5.6-terra \
+  -codex-reasoning-effort medium \
+  -codex-subagent-model gpt-5.6-luna \
+  -codex-subagent-reasoning-effort medium \
+  -codex-max-concurrent-subagents 3
 ```
 
 Loopback HTTP is accepted for development; remote workers require HTTPS.
-Explicit `@codex` mentions in the granted conversation or its one-level
+The worker starts a GPT-5.6 Terra coordinator at medium reasoning. Complex
+requests with independent bounded subtasks may use up to three GPT-5.6 Luna
+subagents; short conversational turns stay on the coordinator. These values
+are passed to each ephemeral Codex thread, so the worker does not change or
+depend on the host's `~/.codex/config.toml`. Matching project-scoped defaults
+live in `.codex/config.toml` for direct Codex use. Active agents automatically
+join public channels. Private channels still require an explicit grant.
+Explicit `@codex` mentions in an accessible conversation or its one-level
 threads create tasks. Passive messages do not. To enforce a human-only area:
 
 ```sh
@@ -78,6 +90,15 @@ the local Codex app-server. Threadhall stores only the bounded catalog and
 exposes it to conversations where that agent has an explicit grant. In the
 composer, use `@` for members, `/plugin` for canonical `plugin://` references,
 and `/skill` for installed skills.
+
+OpenAI's bundled `visualize@openai-bundled` plugin is the default generated-UI
+skill for Threadhall deployments. Install it in the deployment host's dedicated
+Codex home with `codex plugin add visualize@openai-bundled` when it is not
+already bundled and enabled. Threadhall accepts its generated HTML reference
+only from the current task's temporary directory, enforces the existing inline
+UI size limits, strips the host file path, and persists the fragment as a
+zero-network sandboxed inline visualization. The plugin itself remains an
+OpenAI-distributed dependency and is not copied into this repository.
 
 MCP Apps returned by a completed plugin tool call are stored with the agent
 message and rendered inline. The first host boundary supports initialization,

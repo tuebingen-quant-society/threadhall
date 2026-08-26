@@ -53,7 +53,7 @@ func TestRunProtocolCapturesInteractiveQuestionAsDurableCard(t *testing.T) {
 		serverErr <- nil
 	}()
 
-	result, err := runProtocol(context.Background(), client, "refine scope", "/tmp/empty")
+	result, err := runProtocol(context.Background(), client, "refine scope", "/tmp/empty", threadConfig{})
 	if err != nil {
 		t.Fatalf("runProtocol: %v", err)
 	}

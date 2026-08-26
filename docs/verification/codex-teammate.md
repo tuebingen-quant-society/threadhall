@@ -2,8 +2,10 @@
 
 Verified locally on 2026-08-26 against `codex-cli 0.146.1`, authenticated with
 ChatGPT login, using the Codex App Server stdio protocol. The worker starts one
-fresh ephemeral Codex thread per Threadhall task with `approvalPolicy=never`,
-`sandbox=read-only`, and an empty absolute working directory.
+fresh ephemeral Codex thread per Threadhall task with `approvalPolicy=never`
+and an isolated temporary working directory beneath the configured empty root.
+The `workspace-write` sandbox permits generated visualization fragments only;
+the directory is removed after bounded UI content has been captured.
 
 ## Passed
 

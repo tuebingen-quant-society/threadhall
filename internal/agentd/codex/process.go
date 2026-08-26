@@ -16,14 +16,24 @@ const maxPublicStderrBytes = 8 << 10
 
 // Client supervises one authenticated local Codex App Server per task.
 type Client struct {
-	Command string
-	Cwd     string
+	Command                 string
+	Cwd                     string
+	Model                   string
+	ReasoningEffort         string
+	SubagentModel           string
+	SubagentReasoningEffort string
+	MaxConcurrentSubagents  int
 }
 
 func (c Client) Run(ctx context.Context, prompt string) (Result, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return Result{}, errors.New("absolute Codex cwd, command, and prompt are required")
 	}
+	taskCwd, err := os.MkdirTemp(c.Cwd, ".threadhall-task-")
+	if err != nil {
+		return Result{}, fmt.Errorf("create isolated Codex task directory: %w", err)
+	}
+	defer os.RemoveAll(taskCwd)
 	command, stdin, stdout, err := c.start(ctx)
 	if err != nil {
 		return Result{}, err
@@ -31,7 +41,11 @@ func (c Client) Run(ctx context.Context, prompt string) (Result, error) {
 	result, protocolErr := runProtocol(ctx, struct {
 		io.Reader
 		io.Writer
-	}{Reader: stdout, Writer: stdin}, prompt, c.Cwd)
+	}{Reader: stdout, Writer: stdin}, prompt, taskCwd, threadConfig{
+		Model: c.Model, ReasoningEffort: c.ReasoningEffort,
+		SubagentModel: c.SubagentModel, SubagentReasoningEffort: c.SubagentReasoningEffort,
+		MaxConcurrentSubagents: c.MaxConcurrentSubagents,
+	})
 	stopProcess(command, stdin)
 	if protocolErr != nil {
 		return Result{}, fmt.Errorf("Codex app server protocol: %w", protocolErr)

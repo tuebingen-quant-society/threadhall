@@ -1,0 +1,10 @@
+# Threadhall keeps the coordinator responsive and delegates bounded work cheaply.
+# This project layer does not modify ~/.codex/config.toml.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+default_subagent_model = "gpt-5.6-luna"
+default_subagent_reasoning_effort = "medium"

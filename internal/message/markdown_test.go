@@ -29,3 +29,13 @@ func TestRenderMarkdownProducesSafeServerHTML(t *testing.T) {
 		t.Fatalf("rendered link lacks safe rel attributes: %q", rendered)
 	}
 }
+
+func TestRenderMarkdownPreservesAttachmentFragment(t *testing.T) {
+	rendered, err := RenderMarkdown("[notes.md](#attachment-deadbeef)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered, `href="#attachment-deadbeef"`) {
+		t.Fatalf("rendered = %q", rendered)
+	}
+}

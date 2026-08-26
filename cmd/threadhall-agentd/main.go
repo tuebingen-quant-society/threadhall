@@ -30,6 +30,11 @@ func run(ctx context.Context, arguments []string, getenv func(string) string) er
 	threadhallURL := flags.String("threadhall-url", "", "Threadhall HTTPS URL or loopback HTTP URL")
 	codexCommand := flags.String("codex-command", "codex", "Codex executable")
 	codexCwd := flags.String("codex-cwd", "", "absolute read-only working directory for chat tasks")
+	codexModel := flags.String("codex-model", "gpt-5.6-terra", "Codex coordinator model for channel tasks")
+	reasoningEffort := flags.String("codex-reasoning-effort", "medium", "none, low, medium, high, xhigh, or max")
+	subagentModel := flags.String("codex-subagent-model", "gpt-5.6-luna", "default model for delegated tasks")
+	subagentReasoningEffort := flags.String("codex-subagent-reasoning-effort", "medium", "reasoning effort for delegated tasks")
+	maxConcurrentSubagents := flags.Int("codex-max-concurrent-subagents", 3, "maximum concurrent delegated tasks")
 	once := flags.Bool("once", false, "process at most one queued task")
 	taskTimeout := flags.Duration("task-timeout", 3*time.Minute, "maximum duration of one Codex turn")
 	if err := flags.Parse(arguments); err != nil {
@@ -43,7 +48,21 @@ func run(ctx context.Context, arguments []string, getenv func(string) string) er
 	if *taskTimeout < time.Minute || *taskTimeout > 30*time.Minute {
 		return errors.New("task-timeout must be between one and thirty minutes")
 	}
-	runtime := codex.Client{Command: *codexCommand, Cwd: *codexCwd}
+	if !validReasoningEffort(*reasoningEffort) {
+		return errors.New("invalid codex-reasoning-effort")
+	}
+	if !validReasoningEffort(*subagentReasoningEffort) {
+		return errors.New("invalid codex-subagent-reasoning-effort")
+	}
+	if *maxConcurrentSubagents < 1 || *maxConcurrentSubagents > 8 {
+		return errors.New("codex-max-concurrent-subagents must be between one and eight")
+	}
+	runtime := codex.Client{
+		Command: *codexCommand, Cwd: *codexCwd,
+		Model: *codexModel, ReasoningEffort: *reasoningEffort,
+		SubagentModel: *subagentModel, SubagentReasoningEffort: *subagentReasoningEffort,
+		MaxConcurrentSubagents: *maxConcurrentSubagents,
+	}
 	if err := agentd.SyncRuntimeCapabilities(ctx, runtime, client); err != nil {
 		return err
 	}
@@ -62,4 +81,13 @@ func run(ctx context.Context, arguments []string, getenv func(string) string) er
 		return nil
 	}
 	return runner.Run(ctx)
+}
+
+func validReasoningEffort(value string) bool {
+	switch value {
+	case "none", "low", "medium", "high", "xhigh", "max":
+		return true
+	default:
+		return false
+	}
 }
