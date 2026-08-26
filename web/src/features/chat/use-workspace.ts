@@ -43,6 +43,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 
 	const conversationsRef = useRef<Conversation[]>([]);
 	const membersRef = useRef<Member[]>([]);
+	const historyReady = useRef(false);
 	const scopeRef = useRef<Scope>({ id: undefined, selection: 0, fetch: 0 });
 	const selectionController = useRef<AbortController | null>(null);
 	const dataControllers = useRef(new Set<AbortController>());
@@ -63,6 +64,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 		scopeRef.current = { id, selection, fetch: scopeRef.current.fetch + 1 };
 		setSelectedId(id); setSelectionGeneration(selection);
 		setDetail(null); setMembers([]); membersRef.current = [];
+		historyReady.current = false;
 		setTimeline(emptyTimeline()); setPending([]);
 		setMemberCursor(undefined); setMessageCursor(undefined);
 		setDetailError(""); setMessageError(""); setMutationError("");
@@ -105,7 +107,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 				if (!scopeCurrent(scope, controller)) throw staleRequest();
 				const result = appendMemberPage([], memberPage);
 				setDetail(item); membersRef.current = result.items; setMembers(result.items); setMemberCursor(result.nextBeforeId);
-				setTimeline((state) => mergeHistoryPage(state, messagePage.messages)); setMessageCursor(messagePage.next_before_id);
+				setTimeline((state) => mergeHistoryPage(state, messagePage.messages)); setMessageCursor(messagePage.next_before_id); historyReady.current = true;
 			}).catch((error) => {
 				if (scopeCurrent(scope, controller) && !isAbortError(error)) { const text = errorDetail(error); setDetailError(text); setMessageError(text); }
 			}).finally(() => { if (scopeCurrent(scope, controller)) setMessageLoading(false); });
@@ -225,6 +227,7 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 	const refreshAuthoritative = useCallback(async (history: boolean) => {
 		const scope = history ? renewFetchScope() : { ...scopeRef.current };
 		let refreshingSelection = false;
+		let refreshingHistory = history;
 		if (history && scope.id !== undefined) setMessageLoading(true);
 		try {
 			await lists.current.refresh(async (ticket) => {
@@ -235,16 +238,20 @@ export function useWorkspace(api: ApiClient, socketFactory: WorkspaceSocketFacto
 				replaceConversations(result.items, result.nextBeforeId);
 				if (scope.id === undefined) return;
 				if (!result.items.some((item) => item.id === scope.id)) { select(undefined); return; }
-				if (!history) { selectionController.current?.abort(); selectionController.current = ticket.controller; }
+				if (!history) {
+					refreshingHistory = !historyReady.current;
+					selectionController.current?.abort(); selectionController.current = ticket.controller;
+					if (refreshingHistory) setMessageLoading(true);
+				}
 				refreshingSelection = true;
-				await refreshSelected(scope as SelectedScope, ticket.controller, history);
+				await refreshSelected(scope as SelectedScope, ticket.controller, refreshingHistory);
 			});
-			if (history && scopeCurrent(scope)) setMessageLoading(false);
+			if (refreshingHistory && scopeCurrent(scope)) { historyReady.current = true; setMessageLoading(false); }
 		} catch (error) {
 			if (!scopeCurrent(scope) || isAbortError(error)) throw staleRequest();
 			if (refreshingSelection && error instanceof ApiProblem && error.code === "not_found" && scope.id !== undefined) { select(undefined); return; }
 			const text = history ? `Resync failed: ${errorDetail(error)}` : errorDetail(error);
-			setConversationError(text); setDetailError(text); if (history) { setMessageError(text); setMessageLoading(false); }
+			setConversationError(text); setDetailError(text); if (refreshingHistory) { setMessageError(text); setMessageLoading(false); }
 			throw error;
 		}
 	}, [api, refreshSelected, renewFetchScope, replaceConversations, scopeCurrent, select]);

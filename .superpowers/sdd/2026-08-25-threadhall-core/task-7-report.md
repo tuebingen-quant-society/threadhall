@@ -127,3 +127,23 @@
 
 - No CSS/layout code changed in Round 2. The affected composer and loading controls are covered through rendered accessibility/keyboard integration tests, so the prior real Chrome desktop/narrow layout inspection was not repeated or relabeled as new graphical evidence.
 - Clean install still emits the previously recorded Node 23.11 engine warnings; tests, production build, embedded Go tests, and binary build pass. No ledgered minor or out-of-scope feature was touched.
+
+## Fix Round 3 evidence
+
+### RED
+
+- The exact initial-load/invalidation integration regression failed with one history request instead of two. A metadata-only `conversation.member_added` invalidation aborted the initial selected `Promise.all`, refreshed only detail/members, left the real history absent, and left the timeline at `aria-busy="true"` indefinitely.
+
+### GREEN and verification
+
+- The selected scope now records whether its initial history completed. When a metadata invalidation takes over before that point, the authoritative refresh includes history, aborts the stale initial controller, base-merges the replacement history, and clears message loading. Once history is ready, later metadata invalidations remain detail/member-only.
+- Focused `npm --prefix web test -- --run src/chat-workspace-coordination.test.tsx src/chat-workspace.test.tsx`: 2 files, 20 tests passed.
+- Full `npm --prefix web test -- --run`: 12 files, 49 tests passed.
+- `npm --prefix web run build`: passed. Production output is JS 46.65 kB / 15.60 kB gzip, CSS 12.33 kB / 3.47 kB gzip, and HTML 0.39 kB / 0.26 kB gzip.
+- `make check`: passed after clean `npm ci`; embedded Vite build, `go test -tags sqlite_fts5 ./...`, all 49 Vitest tests, and tagged Go binary build are green.
+- `git diff --check`: passed. `web/src/features/chat/use-workspace.ts` is 286 lines and the focused orchestration test is 191 lines, both below the 300-line soft limit.
+
+### Scope
+
+- Round 3 changes only the reported initial-history/invalidation orchestration race, its integration regression, the embedded build artifact, and this evidence. No CSS, deferred minor, or out-of-scope feature changed; graphical reinspection was not warranted.
+- Clean install continues to emit the already recorded Node 23.11 engine warnings while installation, tests, builds, and Go embedding checks pass.

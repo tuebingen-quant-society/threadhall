@@ -92,6 +92,32 @@ describe("ChatWorkspace list coordination", () => {
 });
 
 describe("ChatWorkspace authoritative selection scope", () => {
+	it("reloads initial history when metadata invalidation takes over its selection fetch", async () => {
+		const initialHistory = deferred<{ messages: (typeof baseMessage)[] }>();
+		const refreshedHistory = deferred<{ messages: (typeof baseMessage)[] }>();
+		const invalidation = deferred<{ conversations: (typeof general | typeof research)[] }>();
+		let initialSignal: AbortSignal | undefined;
+		const list = vi.fn().mockResolvedValueOnce({ conversations: [general, research] }).mockReturnValueOnce(invalidation.promise);
+		const history = vi.fn((_id: number, signal: AbortSignal) => {
+			if (history.mock.calls.length === 1) { initialSignal = signal; return initialHistory.promise; }
+			return refreshedHistory.promise;
+		});
+		const api = fakeApi({ history, listConversations: list });
+		const socket = socketHarness();
+		renderWorkspace(api, socket.factory);
+		await waitFor(() => expect(history).toHaveBeenCalledTimes(1));
+
+		act(() => socket.callbacks.onEvent({ seq: 24, type: "conversation.member_added", conversation_id: 2, entity_id: 1, payload: [2, 1] }));
+		await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+		act(() => invalidation.resolve({ conversations: [general, research] }));
+		await waitFor(() => expect(history).toHaveBeenCalledTimes(2));
+		expect(initialSignal?.aborted).toBe(true);
+		act(() => refreshedHistory.resolve({ messages: [baseMessage] }));
+
+		await screen.findByText("general note");
+		await waitFor(() => expect(screen.getByLabelText("Message history").getAttribute("aria-busy")).toBe("false"));
+	});
+
 	it("does not treat a list-level not-found as a successful selected removal", async () => {
 		const list = vi.fn().mockResolvedValueOnce({ conversations: [general] })
 			.mockRejectedValueOnce(new ApiProblem(404, "not_found", "list unavailable"));
