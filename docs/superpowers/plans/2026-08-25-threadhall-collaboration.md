@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Threads are one level: every reply references the root; replies cannot become roots.
+- Threads are one-level child streams, effectively message-scoped subchannels: every reply
+  references the root, replies cannot become roots, and channels do not nest recursively.
 - Search, attachments, unreads, and events must apply membership authorization in storage queries.
 - Stream uploads without buffering full files; use sniffed MIME types and generated paths only.
 - Do not add transcoding, unfurls, offline writes, read receipts, or custom emoji.

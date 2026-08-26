@@ -16,6 +16,10 @@ reactions, and unread state—without enterprise surface area or a distributed r
 Agents join as first-class team members, receive explicit channel and repository grants,
 and work through visible, interruptible, approval-gated tasks.
 
+A thread is a lightweight child stream—effectively a message-scoped subchannel—anchored
+to one root message. Thread replies cannot create further nested streams, and channels do
+not form an arbitrary hierarchy.
+
 The public repository will be `tuebingen-quant-society/threadhall`. The product is a
 standalone open-source project stewarded by TQS rather than a TQS-branded internal tool.
 
