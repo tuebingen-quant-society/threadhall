@@ -78,6 +78,11 @@ func (s *ConversationStore) CreateChannel(ctx context.Context, record conversati
 				return err
 			}
 		}
+		if record.Kind == conversation.KindChannel {
+			if err := grantActiveAgentsToPublicChannel(ctx, tx, created.ID, unix(record.CreatedAt)); err != nil {
+				return err
+			}
+		}
 		if err := recordMutation(ctx, tx, record.CreatorID, record.IdempotencyKey, "create_channel", fingerprint, created.ID, unix(record.CreatedAt)); err != nil {
 			return err
 		}

@@ -40,7 +40,10 @@ func (s *AgentStore) Create(ctx context.Context, command agenttask.CreateAgent) 
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO agents(user_id, token_hash, created_by, created_at)
 			VALUES (?, ?, ?, ?)`, agent.ID, command.TokenHash[:], command.CreatedBy, unix(command.CreatedAt))
-		return err
+		if err != nil {
+			return err
+		}
+		return grantAgentToPublicChannels(ctx, tx, agent.ID, command.CreatedBy, unix(command.CreatedAt))
 	})
 	if err != nil {
 		return agenttask.Agent{}, mapAgentWriteError(err)
