@@ -21,7 +21,7 @@
 
 ### Task 1: Add threads and reactions
 
-**Files:** Modify `internal/message/model.go`, `store.go`, `service.go`, SQLite message store and HTTP handlers; create/extend colocated tests; create `web/src/features/threads/panel.tsx`, `features/reactions/bar.tsx`, and tests.
+**Files:** Modify `internal/message/model.go`, `store.go`, `service.go`, SQLite message store and HTTP handlers; create/extend colocated tests; create `web/src/features/threads/panel.tsx`, `features/reactions/bar.tsx`, and tests; add `migrations/004_threads_reactions.sql`.
 
 - [ ] Add failing tests for root replies, rejection of nested replies/cross-conversation roots, unique user/emoji reactions, toggling, tombstoned roots, and unauthorized thread reads.
 - [ ] Extend message commands with `ThreadRootID *int64` and define `Reaction { MessageID, UserID int64; Emoji string }`; allow only a small server-owned Unicode emoji set in v0.1.
@@ -31,7 +31,7 @@
 
 ### Task 2: Add unread cursors and authorized search
 
-**Files:** Create `internal/message/search.go`, `search_test.go`, `internal/store/sqlite/search_store.go`, `search_store_test.go`, `internal/httpapi/search.go`, `search_test.go`; modify conversation membership/store; create `web/src/features/search/search.tsx`, `features/conversations/unread.ts`, and tests; add `migrations/002_search.sql`.
+**Files:** Create `internal/message/search.go`, `search_test.go`, `internal/store/sqlite/search_store.go`, `search_store_test.go`, `internal/httpapi/search.go`, `search_test.go`; modify conversation membership/store; create `web/src/features/search/search.tsx`, `features/conversations/unread.ts`, and tests; add `migrations/005_search.sql`.
 
 - [ ] Add failing tests for monotonic per-conversation read cursors, bounded unread counts, FTS query/page limits, edits/deletes reflected in FTS, snippets escaped as data, and exclusion of inaccessible conversations.
 - [ ] Define:
@@ -48,7 +48,7 @@ type SearchResult struct { MessageID, ConversationID int64; Snippet string }
 
 ### Task 3: Implement streaming content-addressed uploads
 
-**Files:** Create `internal/media/model.go`, `store.go`, `service.go`, `service_test.go`, `filesystem.go`, `filesystem_test.go`, `internal/store/sqlite/media_store.go`, `media_store_test.go`, `internal/httpapi/media.go`, `media_test.go`; add `migrations/003_media.sql`.
+**Files:** Create `internal/media/model.go`, `store.go`, `service.go`, `service_test.go`, `filesystem.go`, `filesystem_test.go`, `internal/store/sqlite/media_store.go`, `media_store_test.go`, `internal/httpapi/media.go`, `media_test.go`; add `migrations/006_media.sql`.
 
 - [ ] Add failing tests for hard byte limit, MIME sniffing, SHA-256 deduplication, owner-only temp mode, atomic rename, quota reservation, pending token expiry, message claim, delete denial, and traversal filenames.
 - [ ] Implement the streaming boundary:

@@ -38,7 +38,7 @@ const MaxEnvelopeBytes = 256 << 10
 
 ### Task 2: Add agent identities, grants, connection authentication, and invocation
 
-**Files:** Create `internal/agenttask/model.go`, `store.go`, `service.go`, `service_test.go`, `internal/store/sqlite/agent_store.go`, `agent_store_test.go`, `internal/httpapi/agents.go`, `agents_test.go`, `agent_socket.go`, `agent_socket_test.go`; add `migrations/004_agents.sql`.
+**Files:** Create `internal/agenttask/model.go`, `store.go`, `service.go`, `service_test.go`, `internal/store/sqlite/agent_store.go`, `agent_store_test.go`, `internal/httpapi/agents.go`, `agents_test.go`, `agent_socket.go`, `agent_socket_test.go`; add `migrations/007_agents.sql`.
 
 - [ ] Add failing tests for hashed revocable worker tokens, identity/channel/repository grants, explicit mention/DM/action invocation, one active task per thread, owner follow-up, non-owner re-mention, and cross-channel denial.
 - [ ] Implement admin endpoints for identities/grants/token rotation and an origin-independent worker WebSocket authenticated by token scope over TLS.
@@ -85,7 +85,7 @@ type Runtime interface { Start(context.Context, Start) (Session, <-chan Event, e
 
 ### Task 6: Implement exact approval gates and artifacts
 
-**Files:** Create `internal/agenttask/approval.go`, `approval_test.go`, `artifact.go`, `artifact_test.go`, SQLite store additions, HTTP handlers; create `internal/agentd/approval.go`, `artifact.go`, tests; create web approval/artifact components and tests; add `migrations/005_agent_controls.sql`.
+**Files:** Create `internal/agenttask/approval.go`, `approval_test.go`, `artifact.go`, `artifact_test.go`, SQLite store additions, HTTP handlers; create `internal/agentd/approval.go`, `artifact.go`, tests; create web approval/artifact components and tests; add `migrations/008_agent_controls.sql`.
 
 - [ ] Add failing tests for admin-only decision, sanitized action summary, canonical digest, expiry, atomic claim, replay/stale mismatch, approve-once, deny, and provider-forged decision rejection.
 - [ ] Gate network, push, PR, merge, destructive command, and external-message operation classes; resume only the exact stored digest.
@@ -95,7 +95,7 @@ type Runtime interface { Start(context.Context, Start) (Session, <-chan Event, e
 
 ### Task 7: Implement durable structured question cards
 
-**Files:** Create `internal/agenttask/question.go`, `question_test.go`, SQLite interaction store/HTTP handlers; create `internal/agentd/codex/question.go`, `question_test.go`; create `web/src/features/agents/question-card.tsx`, tests; extend migration 005 only if unshipped.
+**Files:** Create `internal/agenttask/question.go`, `question_test.go`, SQLite interaction store/HTTP handlers; create `internal/agentd/codex/question.go`, `question_test.go`; create `web/src/features/agents/question-card.tsx`, tests; extend migration 008 only if unshipped.
 
 - [ ] Add failing golden tests normalizing Codex `item/tool/requestUserInput` IDs, at most three questions, single/multi/confirm/other/free-text schemas, deadline, and secret-request rejection.
 - [ ] Validate owner/admin authorization and the stored schema, atomically claim one answer, return `409` for stale/duplicate answers, expire at provider deadline or 24 hours, and resume the exact runtime turn.
