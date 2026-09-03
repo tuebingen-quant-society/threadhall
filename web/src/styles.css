@@ -43,6 +43,10 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 .small-button { padding: .5rem .8rem; }
 .text-button { border: 0; background: transparent; color: var(--ink-muted); }
 .form-error, .inline-error, .global-error, .composer-error { color: #9b2e20; font-size: .82rem; line-height: 1.45; }
+.pwa-status { position: fixed; z-index: 40; right: 1rem; bottom: 1rem; display: flex; gap: .85rem; align-items: center; max-width: min(31rem, calc(100vw - 2rem)); padding: .7rem .8rem; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 6px 22px rgba(0, 0, 0, .14); color: var(--graphite); font-size: .78rem; }
+.pwa-status > div { display: flex; flex: none; gap: .45rem; align-items: center; }
+.pwa-status .small-button { padding: .38rem .55rem; font-size: .75rem; }
+.pwa-status .text-button { padding: .38rem .2rem; font-size: .75rem; }
 
 .center-state { min-height: 100dvh; display: grid; place-content: center; justify-items: center; padding: 2rem; text-align: center; background: var(--paper); }
 .center-state h1 { margin: .4rem 0; font-weight: 620; letter-spacing: -.03em; }
@@ -277,6 +281,7 @@ textarea { resize: vertical; padding: .75rem; line-height: 1.45; }
 	.composer-wrap { padding: .65rem 1rem .75rem; }
 	.thread-fork-form { grid-template-columns: 1fr; }
 	.send-button { min-height: 38px; }
+	.pwa-status { right: .65rem; bottom: .65rem; left: .65rem; max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
