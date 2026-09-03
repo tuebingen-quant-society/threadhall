@@ -41,5 +41,6 @@ test("installs the built shell and keeps offline state authoritative", async ({ 
 	expect(offlineResponse?.fromServiceWorker()).toBe(true);
 	await expect(page.getByRole("heading", { name: "Threadhall is out of reach." })).toBeVisible();
 	await expect(page.getByRole("alert")).toHaveText("Threadhall could not reach the server.");
+	await expect(page.getByText("Offline support could not be enabled.")).toHaveCount(0);
 	await expect(page.locator(".connection-status")).toHaveCount(0);
 });

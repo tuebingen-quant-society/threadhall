@@ -1,5 +1,5 @@
-const CACHE_NAME = "threadhall-shell-8c797e2e7f8b";
-const SHELL_ASSETS = ["/","/index.html","/manifest.webmanifest","/icons/threadhall-192.png","/icons/threadhall-512.png","/icons/threadhall.svg","/assets/index-BmXJAqlM.css","/assets/index-DwLMq3XM.js"];
+const CACHE_NAME = "threadhall-shell-a571da1534f4";
+const SHELL_ASSETS = ["/","/index.html","/manifest.webmanifest","/icons/threadhall-192.png","/icons/threadhall-512.png","/icons/threadhall.svg","/assets/index-BmXJAqlM.css","/assets/index-DKBwsppW.js"];
 const SHELL_ASSET_SET = new Set(SHELL_ASSETS);
 
 self.addEventListener("install", (event) => {

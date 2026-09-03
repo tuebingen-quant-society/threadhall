@@ -24,11 +24,12 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function installServiceWorker(register: ReturnType<typeof vi.fn>) {
+function installServiceWorker(register: ReturnType<typeof vi.fn>, controller: ServiceWorker | null = null) {
 	Object.defineProperty(navigator, "serviceWorker", {
 		configurable: true,
 		value: {
 			addEventListener: vi.fn(),
+			controller,
 			removeEventListener: vi.fn(),
 			register,
 		},
@@ -180,6 +181,18 @@ describe("registerPWA", () => {
 		await loadPWA();
 
 		expect(states).toEqual([{ kind: "error", error: failure }]);
+	});
+
+	it("keeps an already-controlled shell ready when offline registration fails", async () => {
+		const failure = new Error("offline");
+		const active = new FakeWorker() as unknown as ServiceWorker;
+		installServiceWorker(vi.fn().mockRejectedValue(failure), active);
+		const states: PWAState[] = [];
+
+		registerPWA((state) => states.push(state));
+		await loadPWA();
+
+		expect(states).toEqual([{ kind: "ready" }]);
 	});
 
 	it("removes each listener it installs", async () => {

@@ -57,7 +57,9 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 				if (nextRegistration.waiting !== null) emit({ kind: "update-available" });
 				else emit({ kind: "ready" });
 			})
-			.catch((error: unknown) => emit({ kind: "error", error }));
+			.catch((error: unknown) => emit(navigator.serviceWorker.controller === null
+				? { kind: "error", error }
+				: { kind: "ready" }));
 	};
 
 	listen(window, "load", onLoad);
