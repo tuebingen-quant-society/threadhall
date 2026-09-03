@@ -68,22 +68,42 @@ export class RealtimeSocket {
 	private resyncTimer: ReturnType<typeof setTimeout> | null = null;
 	private stabilityTimer: ReturnType<typeof setTimeout> | null = null;
 	private active = false;
+	private online = true;
 	private resyncing = false;
 	private attempts = 0;
 	private resyncAttempts = 0;
 	private socketSeq = 0;
 
 	constructor(private readonly callbacks: SocketCallbacks, private readonly Socket: SocketConstructor = WebSocket) {}
+	private readonly handleOffline = () => {
+		this.online = false;
+		this.clearTimers();
+		const connection = this.connection;
+		this.connection = null;
+		connection?.close();
+		this.callbacks.onStatus?.("offline");
+	};
+	private readonly handleOnline = () => {
+		if (this.online) return;
+		this.online = true;
+		if (this.active) this.connect();
+	};
 
 	start() {
 		if (this.active) return;
 		this.active = true;
-		this.connect();
+		window.addEventListener("offline", this.handleOffline);
+		window.addEventListener("online", this.handleOnline);
+		this.online = navigator.onLine;
+		if (this.online) this.connect();
+		else this.callbacks.onStatus?.("offline");
 	}
 
 	stop() {
 		this.active = false;
 		this.resyncing = false;
+		window.removeEventListener("offline", this.handleOffline);
+		window.removeEventListener("online", this.handleOnline);
 		this.clearTimers();
 		this.connection?.close();
 		this.connection = null;
@@ -98,7 +118,7 @@ export class RealtimeSocket {
 	}
 
 	private connect() {
-		if (!this.active || this.resyncing) return;
+		if (!this.active || !this.online || this.resyncing) return;
 		this.callbacks.onStatus?.(this.attempts === 0 ? "connecting" : "reconnecting");
 		const connection = new this.Socket(socketURL(this.socketSeq));
 		this.connection = connection;
@@ -141,7 +161,7 @@ export class RealtimeSocket {
 	}
 
 	private scheduleReconnect() {
-		if (!this.active || this.reconnectTimer !== null) return;
+		if (!this.active || !this.online || this.reconnectTimer !== null) return;
 		this.attempts += 1;
 		this.callbacks.onStatus?.("reconnecting");
 		this.reconnectTimer = setTimeout(() => {
@@ -151,7 +171,7 @@ export class RealtimeSocket {
 	}
 
 	private scheduleResync() {
-		if (!this.active || this.resyncTimer !== null) return;
+		if (!this.active || !this.online || this.resyncTimer !== null) return;
 		this.resyncAttempts += 1;
 		this.resyncTimer = setTimeout(() => {
 			this.resyncTimer = null;
@@ -160,7 +180,7 @@ export class RealtimeSocket {
 	}
 
 	private async resync() {
-		if (!this.active || this.resyncing) return;
+		if (!this.active || !this.online || this.resyncing) return;
 		this.resyncing = true;
 		this.connection?.close();
 		this.connection = null;

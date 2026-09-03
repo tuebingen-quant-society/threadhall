@@ -32,3 +32,16 @@ func TestHealthReflectsDatabaseAvailability(t *testing.T) {
 		t.Fatalf("closed database status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
 	}
 }
+
+func TestUnknownAPIPathDoesNotServeApplicationShell(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/unknown", nil)
+	request.Header.Set("Accept", "text/html,application/xhtml+xml")
+	request.Header.Set("Sec-Fetch-Mode", "navigate")
+	recorder := httptest.NewRecorder()
+
+	New(nil).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}

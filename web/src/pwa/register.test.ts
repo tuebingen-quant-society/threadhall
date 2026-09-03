@@ -58,6 +58,7 @@ describe("registerPWA", () => {
 	});
 
 	it("registers the service worker only after window load", async () => {
+		vi.spyOn(document, "readyState", "get").mockReturnValue("loading");
 		const registration = new FakeRegistration();
 		const worker = installServiceWorker(vi.fn().mockResolvedValue(registration));
 		const states: PWAState[] = [];
@@ -66,6 +67,20 @@ describe("registerPWA", () => {
 		expect(worker.register).not.toHaveBeenCalled();
 
 		await loadPWA();
+		expect(worker.register).toHaveBeenCalledWith("/sw.js");
+		expect(states).toEqual([{ kind: "ready" }]);
+	});
+
+	it("registers immediately when window load already completed", async () => {
+		vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+		const registration = new FakeRegistration();
+		const worker = installServiceWorker(vi.fn().mockResolvedValue(registration));
+		const states: PWAState[] = [];
+
+		registerPWA((state) => states.push(state));
+		await Promise.resolve();
+		await Promise.resolve();
+
 		expect(worker.register).toHaveBeenCalledWith("/sw.js");
 		expect(states).toEqual([{ kind: "ready" }]);
 	});

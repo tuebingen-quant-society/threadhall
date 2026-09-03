@@ -20,6 +20,27 @@ class FakeSocket {
 }
 
 describe("RealtimeSocket", () => {
+	it("reports browser offline state and reconnects only after returning online", () => {
+		vi.useFakeTimers();
+		FakeSocket.instances = [];
+		const statuses: string[] = [];
+		const socket = new RealtimeSocket({ onEvent: vi.fn(), onStatus: (status) => statuses.push(status) }, FakeSocket as never);
+		socket.start();
+		FakeSocket.instances[0].open();
+
+		window.dispatchEvent(new Event("offline"));
+		vi.advanceTimersByTime(30_000);
+
+		expect(FakeSocket.instances[0].readyState).toBe(3);
+		expect(FakeSocket.instances).toHaveLength(1);
+		expect(statuses.at(-1)).toBe("offline");
+
+		window.dispatchEvent(new Event("online"));
+		expect(FakeSocket.instances).toHaveLength(2);
+		socket.stop();
+		vi.useRealTimers();
+	});
+
 	it("deduplicates replay and reconnects with the in-memory last sequence", () => {
 		vi.useFakeTimers();
 		FakeSocket.instances = [];

@@ -17,6 +17,7 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 
 	let disposed = false;
 	let activationRequested = false;
+	let registrationStarted = false;
 	let registration: ServiceWorkerRegistration | null = null;
 	const listenerCleanups: Array<() => void> = [];
 	const emit = (state: PWAState) => {
@@ -46,6 +47,8 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 		window.location.reload();
 	};
 	const onLoad = () => {
+		if (registrationStarted) return;
+		registrationStarted = true;
 		navigator.serviceWorker.register("/sw.js")
 			.then((nextRegistration) => {
 				if (disposed) return;
@@ -59,6 +62,7 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 
 	listen(window, "load", onLoad);
 	listen(navigator.serviceWorker, "controllerchange", onControllerChange);
+	if (document.readyState === "complete") queueMicrotask(onLoad);
 
 	return {
 		activateUpdate() {

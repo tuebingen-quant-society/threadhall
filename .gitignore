@@ -3,3 +3,4 @@ bin/
 .worktrees/
 web/node_modules/
 web/coverage/
+web/test-results/
