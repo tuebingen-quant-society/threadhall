@@ -29,7 +29,7 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 
 	const watchInstallingWorker = (worker: ServiceWorker) => {
 		const onStateChange = () => {
-			if (worker.state === "installed") emit({ kind: "update-available" });
+			if (worker.state === "installed" && registration?.waiting === worker) emit({ kind: "update-available" });
 		};
 		listen(worker, "statechange", onStateChange);
 		onStateChange();
@@ -64,8 +64,8 @@ export function registerPWA(onState: (state: PWAState) => void): PWAController {
 		activateUpdate() {
 			const waiting = registration?.waiting;
 			if (waiting === null || waiting === undefined) return;
-			activationRequested = true;
 			waiting.postMessage({ type: "SKIP_WAITING" });
+			activationRequested = true;
 		},
 		cleanup() {
 			if (disposed) return;

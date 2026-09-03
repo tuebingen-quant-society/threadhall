@@ -99,6 +99,22 @@ describe("registerPWA", () => {
 		expect(states).toEqual([{ kind: "ready" }, { kind: "update-available" }]);
 	});
 
+	it("does not surface a first-install worker that activates without waiting", async () => {
+		const registration = new FakeRegistration();
+		const installing = new FakeWorker();
+		registration.installing = installing as unknown as ServiceWorker;
+		installServiceWorker(vi.fn().mockResolvedValue(registration));
+		const states: PWAState[] = [];
+
+		registerPWA((state) => states.push(state));
+		await loadPWA();
+		registration.dispatchEvent(new Event("updatefound"));
+		installing.state = "installed";
+		installing.dispatchEvent(new Event("statechange"));
+
+		expect(states).toEqual([{ kind: "ready" }]);
+	});
+
 	it("only reloads after explicitly activating a waiting update", async () => {
 		const registration = new FakeRegistration();
 		const waiting = new FakeWorker();
@@ -118,6 +134,26 @@ describe("registerPWA", () => {
 		expect(waiting.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
 		controllerChange(new Event("controllerchange"));
 		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not reload after a failed update activation", async () => {
+		const registration = new FakeRegistration();
+		const waiting = new FakeWorker();
+		const failure = new Error("worker is gone");
+		waiting.postMessage.mockImplementation(() => { throw failure; });
+		registration.waiting = waiting as unknown as ServiceWorker;
+		const serviceWorker = installServiceWorker(vi.fn().mockResolvedValue(registration));
+		const reload = vi.fn();
+		const fakeWindow = Object.assign(new EventTarget(), { location: { reload } }) as unknown as Window;
+		vi.stubGlobal("window", fakeWindow);
+
+		const controller = registerPWA(() => undefined);
+		await loadPWA();
+		const controllerChange = serviceWorker.addEventListener.mock.calls.find(([event]) => event === "controllerchange")?.[1] as EventListener;
+		expect(() => controller.activateUpdate()).toThrow(failure);
+		controllerChange(new Event("controllerchange"));
+
+		expect(reload).not.toHaveBeenCalled();
 	});
 
 	it("reports registration errors without throwing", async () => {
