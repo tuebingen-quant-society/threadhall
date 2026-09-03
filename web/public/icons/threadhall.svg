@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Threadhall</title>
+  <rect width="512" height="512" fill="#171717"/>
+  <path fill="#fff" d="M144 144h224v56H284v168h-56V200h-84z"/>
+  <path fill="#fff" d="M144 312h224v56H144z" opacity=".72"/>
+</svg>
